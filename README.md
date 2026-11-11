@@ -54,10 +54,12 @@ automatisch dem kleinen vorgezogen. Im Browser bleibt es beim kleinen Modell.
 
 ## Veröffentlichen auf GitHub Pages
 
-Bei jedem Push auf `main` veröffentlicht `.github/workflows/pages.yml` den Ordner `web/`.
-Das Sprachmodell wird dabei von alphacephei.com geladen und für den Browser gepackt
-(`werkzeuge/modell-packen.sh`), es liegt also nicht im Repository.
-Einmalig nötig: im Repository unter **Settings → Pages → Source: „GitHub Actions“** wählen.
+Adresse: **https://tomsevf.github.io/cue-mitleser/**
+
+Nach Änderungen an der App: `bash werkzeuge/veroeffentlichen.sh` ausführen. Das Skript packt das
+Sprachmodell (`werkzeuge/modell-packen.sh`), kopiert `web/` in den Branch `gh-pages` und pusht ihn.
+GitHub Pages ist auf „Deploy from a branch: gh-pages /“ eingestellt. Der Code liegt in `main`,
+die veröffentlichte App inklusive Modell nur in `gh-pages`.
 
 `stuecke/` steht in `.gitignore`: **Textbücher und Proben gehören nicht ins öffentliche Repository.**
 
