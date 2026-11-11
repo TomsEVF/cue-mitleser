@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#111214">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Cues">
+  <title>Cue-Mitleser</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="css/app.css">
+  <link rel="icon" href="icons/icon-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+</head>
+<body>
+  <header id="kopf">
+    <div class="marke">Cue-Mitleser</div>
+    <div class="stueck-wahl">
+      <select id="stueckListe" title="Stück wählen"></select>
+      <button id="btnNeu" title="Neues Stück">Neu</button>
+      <div class="menue">
+        <button id="btnMenue" title="Weitere Aktionen">⋯</button>
+        <div class="menue-liste" id="menueListe" hidden>
+          <button data-aktion="import-text">Skript importieren …</button>
+          <button data-aktion="export">Stück exportieren (.json)</button>
+          <button data-aktion="import-json">Stück aus Datei laden (.json)</button>
+          <button data-aktion="einstellungen">Einstellungen …</button>
+          <button data-aktion="loeschen" class="gefahr">Stück löschen</button>
+        </div>
+      </div>
+    </div>
+    <nav class="modi" id="modi">
+      <button data-modus="bearbeiten">Bearbeiten</button>
+      <button data-modus="probe">Probe</button>
+      <button data-modus="show">Show</button>
+    </nav>
+    <div class="kopf-status">
+      <span id="speicherStatus" class="speicher"></span>
+      <span id="asrStatus" class="asr" title="Spracherkennung"></span>
+      <button id="btnVollbild" title="Vollbild">⛶</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- Bearbeiten -->
+    <section id="ansichtBearbeiten" class="ansicht">
+      <div class="werkzeuge">
+        <button id="btnImport">Skript importieren</button>
+        <button id="btnZeileNeu">Zeile anfügen</button>
+        <span class="trenner"></span>
+        <button id="btnUndo" title="Rückgängig (⌘Z)">↶</button>
+        <button id="btnRedo" title="Wiederholen (⇧⌘Z)">↷</button>
+        <span class="trenner"></span>
+        <label class="schalter"><input type="checkbox" id="chkAuswertung"> Proben-Auswertung</label>
+        <span class="hinweis-klein">Wort anklicken = Cue setzen · Marke ziehen = verschieben · Entf = löschen</span>
+      </div>
+      <div class="bearbeiten-raster">
+        <div id="skript" class="skript" tabindex="-1"></div>
+        <aside class="cue-panel">
+          <div class="cue-panel-kopf">
+            <div class="filter" id="cueFilter">
+              <button data-filter="alle" class="aktiv">Alle</button>
+              <button data-filter="LX" class="t-LX">LX</button>
+              <button data-filter="SND" class="t-SND">SND</button>
+              <button data-filter="VID" class="t-VID">VID</button>
+            </div>
+            <button id="btnUmnummerieren" title="Cues des gewählten Typs fortlaufend nummerieren">Umnummerieren</button>
+          </div>
+          <div id="cueWarnungen" class="cue-warnungen"></div>
+          <ol id="cueListe" class="cue-liste"></ol>
+        </aside>
+      </div>
+    </section>
+
+    <!-- Probe & Show -->
+    <section id="ansichtLauf" class="ansicht lauf" hidden>
+      <div id="wiederherstellung" class="banner" hidden></div>
+      <div class="lauf-raster">
+        <div class="lauf-haupt">
+          <div id="cueHaupt" class="cue-haupt"></div>
+          <div id="prompter" class="prompter"></div>
+          <div class="steuerung" id="steuerung">
+            <button data-aktion="zurueck" title="Zeile zurück (↑)">▲ Zeile</button>
+            <button data-aktion="vor" title="Zeile vor (↓)">▼ Zeile</button>
+            <button data-aktion="pause" title="Mitlesen pausieren (P)">⏸ Pause</button>
+            <button data-aktion="freeze" title="Position einfrieren (F)">❄ Freeze</button>
+            <button data-aktion="oeffnen" title="Letzten Cue wieder öffnen (Z)">↺ Cue zurück</button>
+            <button data-aktion="erledigt" class="erledigt" title="Cue erledigt (Leertaste)">✓ Erledigt</button>
+          </div>
+          <footer class="lauf-fuss">
+            <div id="naechsteCues" class="naechste"></div>
+            <div class="instrumente">
+              <div class="pegel" title="Mikrofonpegel"><div id="pegelBalken"></div></div>
+              <div id="ampel" class="ampel" title="Tracking-Sicherheit"><span></span><b></b></div>
+              <button id="btnTasten" class="klein" title="Tastenkürzel">?</button>
+              <button id="btnShowEnde" class="klein" hidden>Show beenden</button>
+            </div>
+          </footer>
+        </div>
+        <aside id="debug" class="debug" hidden>
+          <h3>Probe</h3>
+          <div class="debug-zeile"><span>Trefferquote</span><b id="dbgQuote">–</b></div>
+          <div class="debug-zeile"><span>Erkannte Wörter</span><b id="dbgAnzahl">0</b></div>
+          <div class="debug-zeile"><span>Position</span><b id="dbgPos">0</b></div>
+          <h4>Vorläufig</h4>
+          <div id="dbgPartial" class="dbg-text"></div>
+          <h4>Erkannt (endgültig)</h4>
+          <div id="dbgWoerter" class="dbg-woerter"></div>
+          <h4>Simulation</h4>
+          <form id="simForm" class="sim">
+            <input id="simText" placeholder="Text tippen + Enter (ersetzt das Mikrofon)" autocomplete="off">
+          </form>
+          <div class="debug-aktionen">
+            <button id="btnCuesZurueck">Alle Ansagen zurücksetzen</button>
+            <button id="btnProbeSpeichern">Mitschnitt speichern</button>
+          </div>
+          <p class="legende"><i class="e-t"></i>Treffer <i class="e-l"></i>Lücke <i class="e-f"></i>Fehl <i class="e-s"></i>Sprung <i class="e-u"></i>Füllwort</p>
+        </aside>
+      </div>
+    </section>
+
+    <!-- Start ohne Stück -->
+    <section id="ansichtLeer" class="ansicht leer" hidden>
+      <div class="leer-box">
+        <h1>Cue-Mitleser</h1>
+        <p>Lege ein Stück an und importiere das Skript. Cue-Marker wie <code>[LX 12 Blackout]</code>, <code>[SND 4]</code> oder <code>[VID 2]</code> im Text werden automatisch zu Cues am folgenden Wort.</p>
+        <button id="btnLeerNeu" class="primaer">Neues Stück anlegen</button>
+        <button id="btnLeerBeispiel">Beispielstück laden</button>
+      </div>
+    </section>
+  </main>
+
+  <div id="flash" class="flash"></div>
+  <div id="toast" class="toast" hidden></div>
+
+  <!-- Cue-Formular -->
+  <form id="cueForm" class="popover" hidden autocomplete="off">
+    <div class="typ-wahl" id="cueTyp">
+      <button type="button" data-typ="LX" class="t-LX">LX</button>
+      <button type="button" data-typ="SND" class="t-SND">SND</button>
+      <button type="button" data-typ="VID" class="t-VID">VID</button>
+    </div>
+    <div class="feld-reihe">
+      <label>Nummer<input name="nummer" size="5"></label>
+      <label class="breit">Bezeichnung<input name="bezeichnung"></label>
+    </div>
+    <div class="feld-reihe">
+      <label>Vorlauf (Wörter)<input name="vorlauf" type="number" min="0" max="500" size="4"></label>
+      <label class="schalter"><input type="checkbox" name="manuell"> manuell (ohne Stichwort)</label>
+    </div>
+    <label>Notiz<input name="notiz" placeholder="z. B. auf Annas Abgang warten"></label>
+    <div class="form-info" id="cueFormInfo"></div>
+    <div class="form-knoepfe">
+      <button type="button" id="cueLoeschen" class="gefahr">Löschen</button>
+      <button type="button" id="cueVerschieben" title="Danach auf das neue Stichwort tippen">Verschieben</button>
+      <span class="platz"></span>
+      <button type="button" id="cueAbbrechen">Abbrechen</button>
+      <button type="submit" class="primaer">Speichern ↵</button>
+    </div>
+  </form>
+
+  <!-- Dialoge -->
+  <dialog id="dlgImport">
+    <form method="dialog" class="dialog">
+      <h2>Skript importieren</h2>
+      <p class="hinweis">Text einfügen oder Datei wählen (.txt, .docx, PDF mit Textebene). Erkannt werden
+        Textbücher mit Rollennamen in eigener Zeile (<code>ANNA</code> ↵ Text) oder <code>ANNA: Text</code>,
+        <code>(Regieanweisungen)</code>, Akte/Szenen, ein Personenverzeichnis und Seitenzahlen.
+        Cue-Marker <code>[LX 12 Blackout]</code> <code>[SND 4]</code> <code>[VID 2]</code> sitzen am folgenden Wort,
+        <code>[SND 5 Musik manuell]</code> wird ein manueller Cue.</p>
+      <input type="file" id="importDatei" accept=".txt,.docx,.pdf,.md,text/plain">
+      <textarea id="importText" rows="16" placeholder="ANNA: Ich habe dir geschrieben. [LX 12 Blackout] Und keiner kam zurück."></textarea>
+      <label class="schalter"><input type="checkbox" id="importHinweise" checked> Regiehinweise wie <code>-Musik aus.</code>, <code>-Es klingelt</code>, <code>BLACK</code>, <code>(-Läuten.)</code> als Cues anlegen (GO auf das letzte Wort davor)</label>
+      <div class="radio-reihe">
+        <label><input type="radio" name="importArt" value="ersetzen" checked> Skript ersetzen</label>
+        <label><input type="radio" name="importArt" value="anhaengen"> Ans Ende anhängen</label>
+      </div>
+      <div class="form-knoepfe">
+        <span class="platz"></span>
+        <button value="abbrechen">Abbrechen</button>
+        <button value="ok" class="primaer" id="importOk">Importieren</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="dlgBericht">
+    <form method="dialog" class="dialog">
+      <h2>Import abgeschlossen</h2>
+      <pre id="berichtText" class="bericht"></pre>
+      <div class="form-knoepfe"><span class="platz"></span><button value="ok" class="primaer">OK</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="dlgNeu">
+    <form method="dialog" class="dialog">
+      <h2>Neues Stück</h2>
+      <label>Name<input id="neuName" required placeholder="z. B. Woyzeck"></label>
+      <div class="form-knoepfe">
+        <span class="platz"></span>
+        <button value="abbrechen" formnovalidate>Abbrechen</button>
+        <button value="ok" class="primaer">Anlegen</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="dlgEinstellungen">
+    <form method="dialog" class="dialog" id="einstForm">
+      <h2>Einstellungen</h2>
+      <h3>Spracherkennung</h3>
+      <label>Erkennung<select id="einstMotor"></select></label>
+      <p class="hinweis" id="einstMotorHinweis"></p>
+      <div class="modell-zeile" id="modellZeile"><span id="modellStatus" class="hinweis"></span><button type="button" id="btnModellLaden">Sprachmodell jetzt laden</button></div>
+      <label id="einstGeraetFeld">Mikrofon<select id="einstGeraet"></select></label>
+      <label class="schalter" id="einstVokabular"><input type="checkbox" name="vokabularBeschraenken"> Erkennung auf Wörter des Skripts beschränken (oft genauer mit kleinem Modell – in der Probe testen)</label>
+      <h3>Speicher</h3>
+      <p class="hinweis" id="speicherInfo"></p>
+      <h3>Ansagen</h3>
+      <div class="raster2">
+        <label>Standard-Vorlauf neuer Cues (Wörter)<input type="number" name="vorlauf" min="0"></label>
+        <label>„Bereit“ vor dem Stichwort (Wörter)<input type="number" name="bereitWoerter" min="0"></label>
+        <label>GO automatisch erledigt nach (s, 0 = nur Leertaste)<input type="number" name="goAutoErledigt" min="0"></label>
+      </div>
+      <label class="schalter"><input type="checkbox" name="toene"> Leise Töne bei Standby / Bereit / Go (nur über Kopfhörer!)</label>
+      <h3>Mitlesen</h3>
+      <div class="raster2">
+        <label>Ähnlichkeit für Treffer (0–100)<input type="number" name="schwelle" min="30" max="100"></label>
+        <label>Fehlwörter bis Sprungsuche<input type="number" name="fehlFolge" min="2"></label>
+        <label>Fenster für Sprungsuche (Wörter)<input type="number" name="fenster" min="3"></label>
+        <label>Max. übersprungene Wörter (Lücke)<input type="number" name="luecke" min="0"></label>
+        <label>Suchbereich ± Wörter<input type="number" name="suchbereich" min="20"></label>
+        <label>Sicherheit Sprung vor (%)<input type="number" name="sprungSicherheit" min="30" max="100"></label>
+        <label>Sicherheit Sprung zurück (%)<input type="number" name="rueckSprungSicherheit" min="30" max="100"></label>
+      </div>
+      <label>Füllwörter (werden ignoriert)<input name="fuellwoerter"></label>
+      <p class="hinweis">„ja“, „nein“, „also“ stehen bewusst nicht in der Liste, weil sie oft im Text vorkommen.</p>
+      <div class="form-knoepfe">
+        <button value="standard" formnovalidate>Standardwerte</button>
+        <span class="platz"></span>
+        <button value="abbrechen" formnovalidate>Abbrechen</button>
+        <button value="ok" class="primaer">Speichern</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="dlgZeile">
+    <form method="dialog" class="dialog" id="zeileForm">
+      <h2>Zeile bearbeiten</h2>
+      <div class="feld-reihe">
+        <label>Art<select name="typ">
+          <option value="text">Text</option>
+          <option value="regie">Regieanweisung</option>
+          <option value="szene">Szene / Überschrift</option>
+        </select></label>
+        <label>Rolle<input name="rolle" size="14" placeholder="ANNA"></label>
+      </div>
+      <label>Text<textarea name="text" rows="4"></textarea></label>
+      <p class="hinweis">Cue-Marker wie <code>[LX 12 Blackout]</code> werden beim Speichern zu Cues. (Text in Klammern) wird beim Mitlesen übersprungen.</p>
+      <div class="form-knoepfe">
+        <span class="platz"></span>
+        <button value="abbrechen" formnovalidate>Abbrechen</button>
+        <button value="ok" class="primaer">Speichern</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="dlgTasten">
+    <form method="dialog" class="dialog">
+      <h2>Tastenkürzel</h2>
+      <table class="tasten">
+        <tr><td><kbd>Leertaste</kbd></td><td>aktuellen Cue als erledigt markieren / manuellen Cue quittieren</td></tr>
+        <tr><td><kbd>↓</kbd> <kbd>↑</kbd></td><td>Position eine Zeile vor / zurück</td></tr>
+        <tr><td>Klick auf Zeile</td><td>Position dorthin setzen</td></tr>
+        <tr><td><kbd>P</kbd></td><td>Mitlesen pausieren / fortsetzen (Musik, Pause)</td></tr>
+        <tr><td><kbd>F</kbd></td><td>Freeze: Position fest, bis manuell weiter</td></tr>
+        <tr><td><kbd>Z</kbd></td><td>letzten erledigten Cue wieder öffnen</td></tr>
+      </table>
+      <div class="form-knoepfe"><span class="platz"></span><button value="ok" class="primaer">OK</button></div>
+    </form>
+  </dialog>
+
+  <input type="file" id="jsonDatei" accept=".json,application/json" hidden>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

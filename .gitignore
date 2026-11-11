@@ -1,0 +1,11 @@
+# Stücke, Proben und Positionen bleiben privat auf dem Mac (Textbücher nicht veröffentlichen!)
+stuecke/
+
+# Sprachmodell wird beim Veröffentlichen geladen (werkzeuge/modell-packen.sh)
+web/models/*.tar.gz
+
+__pycache__/
+*.pyc
+*.tmp
+.DS_Store
+.venv/

@@ -1,0 +1,4 @@
+aiohttp>=3.9
+vosk>=0.3.44
+sounddevice>=0.4.6
+pypdf>=4.0

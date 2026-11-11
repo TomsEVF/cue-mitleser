@@ -1,0 +1,16 @@
+{
+  "name": "Cue-Mitleser",
+  "short_name": "Cues",
+  "description": "Hört im Theater mit und kündigt Licht-, Ton- und Video-Einsätze an.",
+  "lang": "de",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#111214",
+  "theme_color": "#111214",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
