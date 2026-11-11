@@ -76,12 +76,20 @@ export class Editor {
     }
     // Tatsächliche Stichwörter (nach Auflösung) einfärben
     const stich = new Map();
-    for (const c of this.st.cues) {
+    for (const c of this.ix.reihenfolge) {
       if (c.ausloeser === 'manuell') continue;
       const z = aufgeloest.get(c.id)?.ziel;
       if (z && !stich.has(`${z.z}|${z.wort}`)) stich.set(`${z.z}|${z.wort}`, c.typ);
     }
     const heat = this.auswertung?.heat;
+    // Zeilen, in denen ein Dauer-Cue läuft (Start bis Endwort)
+    const bereich = new Map();
+    for (const c of this.st.cues) {
+      if (c.dauer?.art !== 'wort' || !c.dauer.zeile) continue;
+      const von = this.ix.zeilenIndex.get(c.zeile), bis = this.ix.zeilenIndex.get(c.dauer.zeile);
+      if (von === undefined || bis === undefined) continue;
+      for (let i = Math.min(von, bis); i <= Math.max(von, bis); i++) if (!bereich.has(i)) bereich.set(i, c.typ);
+    }
 
     const teile = [];
     if (!this.st.zeilen.length) {
@@ -89,7 +97,7 @@ export class Editor {
     }
     this.st.zeilen.forEach((z, zi) => {
       const tokens = tokensProZeile[zi];
-      const klassen = ['zeile', z.typ, z.gestrichen ? 'gestrichen' : ''].join(' ');
+      const klassen = ['zeile', z.typ, z.gestrichen ? 'gestrichen' : '', bereich.has(zi) ? `bereich bereich-${bereich.get(zi)}` : ''].join(' ');
       let html = '';
       const marken = (wort) => (amWort.get(`${z.id}|${wort}`) || []).map((c) => this.markeHtml(c, aufgeloest.get(c.id), doppelt)).join('');
       for (const tk of tokens) {
@@ -113,6 +121,7 @@ export class Editor {
         <div class="rolle">${zeigeRolle ? esc(z.rolle) : ''}</div>
         <div class="text">${html || '<span class="w regie" data-z="' + zi + '" data-w="0">&nbsp;</span>'}</div>
         <div class="zeile-werkzeug">
+          <button data-aktion="abhier" title="Probe ab dieser Zeile starten">▶</button>
           <button data-aktion="bearbeiten" title="Zeile bearbeiten">✎</button>
           <button data-aktion="streichen" title="${z.gestrichen ? 'Strich aufheben' : 'Zeile streichen'}">${z.gestrichen ? '↺' : '✂'}</button>
           <button data-aktion="einfuegen" title="Neue Zeile darunter">＋</button>
@@ -126,12 +135,17 @@ export class Editor {
 
   markeHtml(c, r, doppelt) {
     const cls = ['mark', `t-${c.typ}`];
+    if (c.istEnde) {
+      if (c.zuCue === this.gewaehlt) cls.push('gewaehlt');
+      return `<span class="${cls.join(' ')} ende" draggable="true" data-cue="${c.id}" title="${esc(`Ende von ${c.typ} ${c.nummer}: ${c.bezeichnung}`)}">■ ${esc(`${c.typ} ${c.nummer || '?'}`)}</span>`;
+    }
     if (c.ausloeser === 'manuell') cls.push('manuell');
     if (c.id === this.gewaehlt) cls.push('gewaehlt');
     if (r?.verschoben) cls.push('verschoben');
     const titel = [S.cueLabel(c), c.bezeichnung, c.ausloeser === 'manuell' ? 'manuell' : `Vorlauf ${c.vorlauf} Wörter`,
       doppelt.has(c.id) ? '⚠ doppelte Nummer' : '', r?.verschoben ? '⚠ Stichwort verschoben' : ''].filter(Boolean).join(' · ');
-    return `<span class="${cls.join(' ')}" draggable="true" data-cue="${c.id}" title="${esc(titel)}">${esc(S.cueLabel(c))}</span>`;
+    const symbol = { zeit: ' ⏱', wort: ' ▶', manuell: ' ▶' }[c.dauer?.art] || '';
+    return `<span class="${cls.join(' ')}" draggable="true" data-cue="${c.id}" title="${esc(titel)}">${esc(S.cueLabel(c))}${symbol}</span>`;
   }
 
   // ---------------------------------------------------------------- Cue-Liste
@@ -157,7 +171,9 @@ export class Editor {
       this.auswertungLaden();
     });
 
-    const liste = this.ix.reihenfolge.filter((c) => this.filter === 'alle' || c.typ === this.filter);
+    const liste = this.ix.reihenfolge.filter((c) => !c.istEnde && (this.filter === 'alle' || c.typ === this.filter));
+    const gruppeVon = new Map();
+    for (const g of this.ix.gruppen) for (const c of g.cues) gruppeVon.set(c.id, g);
     if (!liste.length) {
       ol.innerHTML = `<li class="leer-hinweis">${this.st.cues.length ? 'Keine Cues dieses Typs.' : 'Noch keine Cues. Auf ein Wort im Skript klicken, um einen Cue zu setzen.'}</li>`;
       return;
@@ -185,7 +201,9 @@ export class Editor {
         <span class="nr">${esc(S.cueLabel(c))}</span>
         <span>
           <div class="bez">${esc(c.bezeichnung || '–')}${c.ausloeser === 'manuell' ? ' <small>(manuell)</small>' : ''}</div>
-          <div class="wo">${wo}${c.ausloeser === 'manuell' ? '' : ` · Vorlauf ${esc(c.vorlauf)}`}</div>
+          <div class="wo">${c.ausloeser === 'manuell' ? `Einsatz: ${c.einsatz ? `<b>${esc(c.einsatz)}</b>` : '<i>nicht angegeben</i>'} · vor ` : ''}${wo}${c.ausloeser === 'manuell' ? '' : ` · Vorlauf ${esc(c.vorlauf)}`}</div>
+          ${c.dauer?.art ? `<div class="dauer">${esc(S.dauerBeschreibung(c, this.ix))}</div>` : ''}
+          ${(() => { const mit = (gruppeVon.get(c.id)?.cues || []).filter((x) => x.id !== c.id && !x.istEnde); return mit.length ? `<div class="mit">⇉ gleichzeitig mit ${esc(mit.map(S.cueLabel).join(', '))}</div>` : ''; })()}
           ${c.notiz ? `<div class="notiz">${esc(c.notiz)}</div>` : ''}
           ${warn.join('')}
         </span>
@@ -221,6 +239,18 @@ export class Editor {
     f.elements.vorlauf.value = c ? c.vorlauf : this.st.einstellungen.vorlauf;
     f.elements.notiz.value = c?.notiz || '';
     f.elements.manuell.checked = c?.ausloeser === 'manuell';
+    f.elements.einsatz.value = c?.einsatz || '';
+    f.elements.dauerArt.value = c?.dauer?.art || '';
+    f.elements.sekunden.value = c?.dauer?.sekunden ? S.zeitText(c.dauer.sekunden) : '';
+    f.elements.dauerText.value = c?.dauer?.text || '';
+    // „Gleichzeitig mit“: alle anderen Cues; vorausgewählt, wenn schon in einer Gruppe
+    const gruppe = c ? this.ix.gruppen.find((g) => g.cues.some((x) => x.id === c.id)) : null;
+    const partner = gruppe?.cues.find((x) => x.id !== c.id && !x.istEnde);
+    f.elements.mit.innerHTML = '<option value="">– eigener Einsatz –</option>' + this.ix.reihenfolge
+      .filter((x) => !x.istEnde && x.id !== c?.id)
+      .map((x) => `<option value="${x.id}">${esc(S.cueLabel(x))} ${esc(x.bezeichnung || '')} (${x.ausloeser === 'manuell' ? 'manuell' : `bei „${esc(this.wortVon(x))}“`})</option>`).join('');
+    f.elements.mit.value = partner?.id || '';
+    this.formFelderZeigen();
     this.typZeigen();
     $('#cueLoeschen').hidden = !c;
     $('#cueVerschieben').hidden = !c;
@@ -241,7 +271,28 @@ export class Editor {
 
   verschiebenEnde() {
     this.verschieben = null;
+    this.endwortFuer = null;
     document.body.classList.remove('verschiebe-modus');
+  }
+
+  wortVon(c) {
+    const z = this.ix.aufgeloest.get(c.id)?.ziel;
+    return z ? this.ix.tokensProZeile[z.z][z.wort]?.text || '' : '';
+  }
+
+  // Felder je nach Auswahl ein-/ausblenden
+  formFelderZeigen() {
+    const f = $('#cueForm');
+    const art = f.elements.dauerArt.value;
+    $('#einsatzFeld').hidden = !f.elements.manuell.checked || !!f.elements.mit.value;
+    $('#sekundenFeld').hidden = art !== 'zeit';
+    $('#endwortFeld').hidden = art !== 'wort';
+    $('#dauerTextFeld').hidden = !art;
+    if (art === 'wort') {
+      const c = this.form?.cueId ? this.st.cues.find((x) => x.id === this.form.cueId) : null;
+      const ende = c ? this.ix.aufgeloest.get(`${c.id}#ende`)?.ziel : null;
+      $('#endwortText').textContent = ende ? `Endet bei „${this.ix.tokensProZeile[ende.z][ende.wort]?.text}“` : 'Noch kein Endwort gewählt';
+    }
   }
 
   formularSchliessen() {
@@ -256,7 +307,7 @@ export class Editor {
   // Nummer vorschlagen: nach dem vorigen Cue gleichen Typs, ggf. Zwischennummer (12.5)
   nummerVorschlag(typ, zeileId, wort) {
     const zi = this.ix.zeilenIndex.get(zeileId);
-    const gleiche = this.ix.reihenfolge.filter((c) => c.typ === typ && c.nummer !== '' && !isNaN(parseFloat(c.nummer)));
+    const gleiche = this.ix.reihenfolge.filter((c) => !c.istEnde && c.typ === typ && c.nummer !== '' && !isNaN(parseFloat(c.nummer)));
     const pos = (c) => [this.ix.zeilenIndex.get(c.zeile) ?? 1e9, c.wort];
     const vor = gleiche.filter((c) => { const [a, b] = pos(c); return a < zi || (a === zi && b <= wort); });
     const nach = gleiche.filter((c) => !vor.includes(c));
@@ -271,7 +322,18 @@ export class Editor {
   formularSpeichern() {
     const f = $('#cueForm');
     const d = this.form;
-    if (!d) return;
+    if (!d) return null;
+    const alt = d.cueId ? this.st.cues.find((c) => c.id === d.cueId) : null;
+    const art = f.elements.dauerArt.value;
+    const dauer = art ? {
+      art,
+      sekunden: art === 'zeit' ? S.sekundenLesen(f.elements.sekunden.value) : undefined,
+      text: f.elements.dauerText.value.trim(),
+      zeile: art === 'wort' ? alt?.dauer?.zeile : undefined,
+      wort: art === 'wort' ? alt?.dauer?.wort : undefined,
+    } : null;
+    if (art === 'zeit' && !dauer.sekunden) toast('Timer ohne Zeit – bitte z. B. 1:30 eintragen.', 3500);
+    const partner = f.elements.mit.value ? this.st.cues.find((c) => c.id === f.elements.mit.value) : null;
     const werte = {
       typ: d.typ,
       nummer: f.elements.nummer.value.trim().replace(',', '.'),
@@ -279,15 +341,20 @@ export class Editor {
       vorlauf: Math.max(0, parseInt(f.elements.vorlauf.value, 10) || 0),
       notiz: f.elements.notiz.value.trim(),
       ausloeser: f.elements.manuell.checked ? 'manuell' : 'wort',
+      einsatz: f.elements.einsatz.value.trim(),
+      dauer,
     };
+    // „Gleichzeitig mit“: gleicher Einsatz wie der andere Cue
+    if (partner) Object.assign(werte, { zeile: partner.zeile, wort: partner.wort, ausloeser: partner.ausloeser, einsatz: partner.einsatz || werte.einsatz });
     this.letzterTyp = d.typ;
     let id = d.cueId;
     this.app.aendern((st) => {
       if (id) Object.assign(st.cues.find((c) => c.id === id), werte);
-      else { id = S.neueId('c'); st.cues.push({ id, ...werte, zeile: d.zeile, wort: d.wort }); }
+      else { id = S.neueId('c'); st.cues.push({ id, zeile: d.zeile, wort: d.wort, ...werte }); }
     });
     this.formularSchliessen();
     this.waehle(id, { scrollListe: true });
+    return id;
   }
 
   cueLoeschen(id) {
@@ -346,6 +413,7 @@ export class Editor {
 
   zeileAktion(aktion, zi) {
     const z = this.st.zeilen[zi];
+    if (aktion === 'abhier') { this.app.abHierStarten(zi); return; }
     if (aktion === 'bearbeiten') this.zeileDialog(zi, false);
     if (aktion === 'einfuegen') this.zeileDialog(zi, true);
     if (aktion === 'streichen') {
@@ -378,7 +446,7 @@ export class Editor {
       for (const typ of typen) {
         let n = 1;
         for (const c of this.ix.reihenfolge) {
-          if (c.typ !== typ) continue;
+          if (c.typ !== typ || c.istEnde) continue;
           st.cues.find((x) => x.id === c.id).nummer = String(n++);
         }
       }
@@ -428,7 +496,7 @@ export class Editor {
       const mark = e.target.closest('.mark');
       if (mark) {
         e.stopPropagation();
-        const c = this.st.cues.find((x) => x.id === mark.dataset.cue);
+        const c = this.st.cues.find((x) => x.id === mark.dataset.cue.replace(/#ende$/, ''));
         this.waehle(c.id, { scrollListe: true });
         this.formularOeffnen(mark, { cueId: c.id, zeile: c.zeile, wort: c.wort });
         return;
@@ -436,6 +504,16 @@ export class Editor {
       const btn = e.target.closest('.zeile-werkzeug button');
       if (btn) { this.zeileAktion(btn.dataset.aktion, Number(btn.closest('.zeile').dataset.z)); return; }
       const w = e.target.closest('.w');
+      if (w && this.endwortFuer) {
+        const id = this.endwortFuer;
+        this.verschiebenEnde();
+        const zeile = this.st.zeilen[Number(w.dataset.z)].id;
+        const wort = Number(w.dataset.w);
+        this.app.aendern((st) => { const x = st.cues.find((y) => y.id === id); x.dauer = { ...(x.dauer || {}), art: 'wort', zeile, wort }; });
+        this.waehle(id, { scrollListe: true });
+        toast(`Endet jetzt bei „${w.textContent}“.`);
+        return;
+      }
       if (w && this.verschieben) {
         const id = this.verschieben;
         this.verschiebenEnde();
@@ -479,6 +557,12 @@ export class Editor {
       e.preventDefault();
       const zeile = this.st.zeilen[Number(w.dataset.z)].id;
       const wort = Number(w.dataset.w);
+      if (id.endsWith('#ende')) {
+        const haupt = id.replace(/#ende$/, '');
+        this.app.aendern((st) => { const x = st.cues.find((y) => y.id === haupt); x.dauer = { ...x.dauer, zeile, wort }; });
+        toast(`Ende verschoben auf „${w.textContent}“.`);
+        return;
+      }
       const c = this.st.cues.find((x) => x.id === id);
       if (c.zeile === zeile && c.wort === wort) { w.classList.remove('ziel'); return; }
       this.app.aendern((st) => { const x = st.cues.find((y) => y.id === id); x.zeile = zeile; x.wort = wort; });
@@ -529,6 +613,15 @@ export class Editor {
       this.typZeigen();
     });
     $('#cueAbbrechen').addEventListener('click', () => this.formularSchliessen());
+    for (const n of ['dauerArt', 'manuell', 'mit']) f.elements[n].addEventListener('change', () => this.formFelderZeigen());
+    $('#btnEndwort').addEventListener('click', () => {
+      $('#cueForm').elements.dauerArt.value = 'wort';
+      const id = this.formularSpeichern();
+      if (!id) return;
+      this.endwortFuer = id;
+      document.body.classList.add('verschiebe-modus');
+      toast('Jetzt auf das Wort tippen, bei dem der Cue endet (Esc bricht ab).', 4000);
+    });
     $('#cueVerschieben').addEventListener('click', () => {
       if (!this.form?.cueId) return;
       this.verschieben = this.form.cueId;

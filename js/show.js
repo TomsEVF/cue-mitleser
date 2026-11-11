@@ -35,6 +35,9 @@ export class Laufzeit {
     this.goZeit = new Map();        // Gruppenschlüssel → Zeitpunkt GO
     this.ersteAnsage = new Map();   // Gruppenschlüssel → Zeitpunkt Standby
     this.stufen = new Map();        // Gruppenschlüssel → letzte Stufe
+    this.laufend = new Map();       // Cue-ID → {start, erinnert} für Cues mit Dauer/Timer
+    this.blaettern = false;         // Pause: Text frei durchblättern
+    this.auswahlZeile = null;
     this.ursache = 'wort';
     this.positionZeit = Date.now();  // Start oder letzte manuelle Korrektur
     this.statistik = { t: 0, l: 0, f: 0, s: 0, u: 0, w: 0 };
@@ -46,6 +49,7 @@ export class Laufzeit {
 
     this.wachHalten();
     await this.wiederherstellen();
+    if (this.app.startZeile != null) { this.abHier(this.app.startZeile); this.app.startZeile = null; }
     this.mikroStart();
     clearInterval(this.takt);
     this.takt = setInterval(() => this.tick(), 250);
@@ -137,8 +141,9 @@ export class Laufzeit {
     if (!z.pos && !(z.erledigt || []).length) return;
     this.tracker.setzePosition(z.pos || 0);
     this.anzeigePos = this.goPos = this.tracker.pos;
-    const ids = new Set(this.st.cues.map((c) => c.id));
+    const ids = new Set(this.ix.reihenfolge.map((c) => c.id));
     for (const id of z.erledigt || []) if (ids.has(id)) this.erledigt.add(id);
+    for (const [id, l] of z.laufend || []) if (ids.has(id)) this.laufend.set(id, l);
     // bereits erreichte, nicht erledigte Gruppen nicht erneut als GO anzeigen lassen
     for (const g of this.ix.gruppen) if (!g.manuell && g.idx < this.goPos && !this.gruppeErledigt(g)) this.goZeit.set(gKey(g), Date.now());
     const zeile = this.ix.gesprochen[Math.min(this.tracker.pos, this.ix.gesprochen.length - 1)];
@@ -148,7 +153,7 @@ export class Laufzeit {
       <span class="platz"></span><button id="btnVonVorn">Von vorn beginnen</button><button id="btnBannerZu">OK</button>`;
     banner.hidden = false;
     $('#btnVonVorn').onclick = () => {
-      this.erledigt.clear(); this.goZeit.clear(); this.ersteAnsage.clear(); this.stufen.clear();
+      this.erledigt.clear(); this.goZeit.clear(); this.ersteAnsage.clear(); this.stufen.clear(); this.laufend.clear();
       this.setzePosition(0, false);
       banner.hidden = true;
     };
@@ -157,7 +162,7 @@ export class Laufzeit {
 
   zustandSpeichern(sofort = false) {
     if (!this.app.name) return;
-    const z = { pos: this.tracker.pos, erledigt: [...this.erledigt], zeit: Date.now(), modus: this.modus };
+    const z = { pos: this.tracker.pos, erledigt: [...this.erledigt], laufend: [...this.laufend], zeit: Date.now(), modus: this.modus };
     lokal(`cue.zustand.${this.app.name}`, JSON.stringify(z));
     clearTimeout(this.zustandTimer);
     const senden = () => api.zustandSpeichern(this.app.name, z).catch(() => {});
@@ -311,28 +316,92 @@ export class Laufzeit {
       });
       this.ton('go');
       this.blitz(g.cues[0].typ);
+      for (const c of g.cues) { if (c.istEnde) this.laufenBeenden(c.zuCue, 'endwort'); else this.laufenStarten(c); }
     }
     this.render();
+  }
+
+  // ---------------------------------------------------------------- Cues mit Dauer / Timer
+  cueVon(id) { return this.ix.reihenfolge.find((c) => c.id === id); }
+
+  laufenStarten(c) {
+    if (!c?.dauer?.art || c.istEnde || this.laufend.has(c.id)) return;
+    this.laufend.set(c.id, { start: Date.now(), erinnert: 0 });
+    this.zustandSpeichern();
+  }
+
+  laufenBeenden(id, via) {
+    if (!this.laufend.delete(id)) return;
+    this.probe.cues.push({ t: Date.now(), ids: [id], stufe: 'ende', via });
+    this.zustandSpeichern();
+  }
+
+  // Ab einer bestimmten Zeile starten: alles davor erledigt, alles danach offen
+  abHier(zi) {
+    const b = this.ix.zeilenBereich;
+    while (zi < b.length && b[zi].bis <= b[zi].von) zi++;
+    const pos = zi < b.length ? b[zi].von : this.ix.gesprochen.length;
+    this.erledigt.clear(); this.goZeit.clear(); this.ersteAnsage.clear(); this.stufen.clear();
+    this.erledigtStapel = []; this.laufend.clear();
+    let n = 0;
+    for (const g of this.ix.gruppen) {
+      if (g.idx >= pos) continue;
+      for (const c of g.cues) this.erledigt.add(c.id);
+      this.stufen.set(gKey(g), 'erledigt');
+      n++;
+    }
+    // Dauer-Cues, die vor dieser Stelle beginnen und danach enden, laufen bereits
+    for (const c of this.st.cues) {
+      const start = this.ix.aufgeloest.get(c.id)?.idx, ende = this.ix.aufgeloest.get(`${c.id}#ende`)?.idx;
+      if (c.dauer?.art === 'wort' && start < pos && ende >= pos) this.laufend.set(c.id, { start: Date.now(), erinnert: 0 });
+    }
+    this.pausiert = false;
+    this.blaettern = false;
+    this.auswahlZeile = null;
+    $('#wiederherstellung').hidden = true;
+    this.setzePosition(pos, false);
+    this.probe.korrekturen.push({ t: Date.now(), von: null, nach: pos, abHier: true });
+    toast(`Start ab hier${n ? ` – ${n} Cue${n > 1 ? 's' : ''} davor als erledigt markiert` : ''}.`, 3000);
   }
 
   tick() {
     if (!this.aktiv) return;
     const sek = Number(this.e.goAutoErledigt) || 0;
-    if (!sek) return;
     const jetzt = Date.now();
     let geaendert = false;
-    for (const g of this.ix.gruppen) {
-      const t = this.goZeit.get(gKey(g));
-      if (t && !this.gruppeErledigt(g) && jetzt - t > sek * 1000) {
-        this.markiereErledigt(g, 'auto', false);
+    if (sek) {
+      for (const g of this.ix.gruppen) {
+        const t = this.goZeit.get(gKey(g));
+        if (t && !this.gruppeErledigt(g) && jetzt - t > sek * 1000) {
+          this.markiereErledigt(g, 'auto', false);
+          geaendert = true;
+        }
+      }
+    }
+    // Timer abgelaufen → Cue meldet sich wieder
+    for (const [id, l] of this.laufend) {
+      const c = this.cueVon(id);
+      if (c?.dauer?.art !== 'zeit' || l.erinnert || !c.dauer.sekunden) continue;
+      if (jetzt - l.start >= c.dauer.sekunden * 1000) {
+        l.erinnert = jetzt;
+        this.ton('go');
+        this.blitz(c.typ);
+        this.probe.cues.push({ t: jetzt, ids: [id], stufe: 'timer' });
         geaendert = true;
       }
     }
     if (geaendert) this.aktualisieren();
+    else if (this.laufend.size && Math.floor(jetzt / 1000) !== this.letzteSekunde) {
+      this.letzteSekunde = Math.floor(jetzt / 1000);
+      this.renderCues();   // Uhren weiterzählen
+    }
   }
 
   markiereErledigt(g, via, neuZeichnen = true) {
-    for (const c of g.cues) this.erledigt.add(c.id);
+    for (const c of g.cues) {
+      this.erledigt.add(c.id);
+      if (c.istEnde) this.laufenBeenden(c.zuCue, via); else this.laufenStarten(c);
+    }
     this.erledigtStapel.push(g.cues.map((c) => c.id));
     this.probe.cues.push({ t: Date.now(), ids: g.cues.map((c) => c.id), stufe: 'erledigt', via });
     this.zustandSpeichern();
@@ -341,6 +410,9 @@ export class Laufzeit {
 
   // Leertaste: aktuellen (frühesten aktiven) Cue erledigen
   leertaste() {
+    // zuerst abgelaufene Timer quittieren
+    const erinnerung = [...this.laufend].filter(([, l]) => l.erinnert).sort((a, b) => a[1].erinnert - b[1].erinnert)[0];
+    if (erinnerung) { this.laufenBeenden(erinnerung[0], 'timer-quittiert'); this.aktualisieren(); return; }
     const gruppen = this.ix.gruppen;
     const stufen = this.stufenBerechnen();
     let ziel = null, zielStufe = null;
@@ -358,7 +430,7 @@ export class Laufzeit {
   wiederOeffnen() {
     const ids = this.erledigtStapel.pop();
     if (!ids) return;
-    for (const id of ids) this.erledigt.delete(id);
+    for (const id of ids) { this.erledigt.delete(id); this.laufend.delete(id); }
     const k = ids.join('+');
     this.goZeit.delete(k);
     this.stufen.delete(k);
@@ -434,6 +506,8 @@ export class Laufzeit {
     }[s];
     const bez = g.cues.map((c) => c.bezeichnung).filter(Boolean).join(' · ');
     const notiz = g.cues.map((c) => c.notiz).filter(Boolean).join(' · ');
+    const einsatz = g.manuell ? g.cues.map((c) => c.einsatz).filter(Boolean).join(' · ') : '';
+    const dauer = g.cues.filter((c) => c.dauer?.art).map((c) => `${S.cueLabel(c)}: ${S.dauerBeschreibung(c, this.ix)}`).join(' · ');
     const zeigeRest = !g.manuell && s !== 'go';
     const breite = g.vorlauf ? Math.max(0, Math.min(100, (rest / g.vorlauf) * 100)) : 0;
     const cls = ['cue-karte', `typ-${c0.typ}`, s === 'standby' ? 'manuell-standby' : s, klein ? 'klein' : ''];
@@ -441,6 +515,8 @@ export class Laufzeit {
       <div class="stufe">${stufeText}</div>
       <div class="titel">${esc(titel)}</div>
       ${bez ? `<div class="bez">${esc(bez)}</div>` : ''}
+      ${einsatz ? `<div class="einsatz">Einsatz: ${esc(einsatz)}</div>` : ''}
+      ${dauer && s !== 'wartet' ? `<div class="notiz">${esc(dauer)}</div>` : ''}
       ${notiz ? `<div class="notiz">${esc(notiz)}</div>` : ''}
       ${zeigeRest ? `<div class="rest">${rest}<small>Wörter</small></div>` : ''}
       ${zeigeRest && (s === 'warnung' || s === 'bereit') ? `<div class="balken"><div style="width:${breite}%"></div></div>` : ''}
@@ -459,26 +535,58 @@ export class Laufzeit {
       else if (!naechsteWartend && !aktiv.length) naechsteWartend = [g, s];
       else rest.push([g, s]);
     });
-    let html;
-    if (aktiv.length) html = aktiv.map(([g, s], i) => this.karte(g, s, i > 0)).join('');
-    else if (naechsteWartend) html = this.karte(naechsteWartend[0], 'wartet', false);
-    else html = `<div class="ende">${gruppen.length ? 'Alle Cues erledigt.' : 'Keine Cues im Stück.'}</div>`;
+    const jetzt = Date.now();
+    const erinnerungen = [...this.laufend].filter(([, l]) => l.erinnert).map(([id]) => {
+      const c = this.cueVon(id);
+      return c ? `<div class="cue-karte typ-${c.typ} erinnerung">
+        <div class="stufe">⏱ ZEIT ABGELAUFEN · ${esc(S.cueLabel(c))} ${esc(c.bezeichnung || '')}</div>
+        <div class="titel">${esc(c.dauer.text || `${S.cueLabel(c)} beenden`)}</div>
+        <div class="bez">nach ${S.zeitText(c.dauer.sekunden)} – mit „Erledigt“ quittieren</div>
+      </div>` : '';
+    });
+    let html = erinnerungen.join('');
+    if (aktiv.length) html += aktiv.map(([g, s], i) => this.karte(g, s, i > 0 || erinnerungen.length > 0)).join('');
+    else if (naechsteWartend) html += this.karte(naechsteWartend[0], 'wartet', erinnerungen.length > 0);
+    else if (!erinnerungen.length) html += `<div class="ende">${gruppen.length ? 'Alle Cues erledigt.' : 'Keine Cues im Stück.'}</div>`;
+    // Laufende Cues (Musik, Lichtstimmung, Timer)
+    const laeuft = [...this.laufend].filter(([, l]) => !l.erinnert).map(([id, l]) => {
+      const c = this.cueVon(id);
+      if (!c) return '';
+      const seit = (jetzt - l.start) / 1000;
+      let info = `seit ${S.zeitText(seit)}`;
+      if (c.dauer.art === 'zeit') info = `noch ${S.zeitText((c.dauer.sekunden || 0) - seit)}`;
+      if (c.dauer.art === 'wort') {
+        const z = this.ix.aufgeloest.get(`${id}#ende`);
+        info += z ? ` · bis „${esc(this.ix.tokensProZeile[z.ziel?.z]?.[z.ziel?.wort]?.text || '')}“ (${Math.max(0, z.idx - this.anzeigePos)} W.)` : '';
+      }
+      return `<button class="laeuft typ-${c.typ}" data-laeuft="${id}" title="Antippen beendet den Cue"><b>▶ ${esc(S.cueLabel(c))}</b> ${esc(c.bezeichnung || '')} <small>${info}</small></button>`;
+    }).join('');
+    if (laeuft) html += `<div class="laeuft-liste"><span class="laeuft-titel">Läuft</span>${laeuft}</div>`;
     $('#cueHaupt').innerHTML = html;
 
     $('#naechsteCues').innerHTML = rest.slice(0, 3).map(([g]) => {
-      const w = g.manuell ? 'manuell' : `in ${Math.max(0, g.idx - this.anzeigePos)} W.`;
+      const einsatz = g.cues.map((c) => c.einsatz).filter(Boolean).join(' · ');
+      const w = g.manuell ? (einsatz ? `manuell: ${einsatz.slice(0, 30)}` : 'manuell') : `in ${Math.max(0, g.idx - this.anzeigePos)} W.`;
       return `<span class="n typ-${g.cues[0].typ}"><b>${esc(S.gruppenLabel(g))}</b>${esc(g.cues.map((c) => c.bezeichnung).filter(Boolean).join(' · ').slice(0, 30))} <small>${w}</small></span>`;
     }).join('') || '<span class="n"><small>keine weiteren Cues</small></span>';
   }
 
   renderPrompter() {
+    const pr = $('#prompter');
+    this.abHierLeisteZeigen();
+    if (this.blaettern && this.prompterVoll) {   // beim Blättern nicht neu aufbauen (Scrollposition bleibt)
+      pr.querySelectorAll('.pz.auswahl').forEach((e) => e.classList.remove('auswahl'));
+      if (this.auswahlZeile != null) pr.querySelector(`.pz[data-z="${this.auswahlZeile}"]`)?.classList.add('auswahl');
+      return;
+    }
+    pr.classList.toggle('blaettern', this.blaettern);
     const zeilen = this.st.zeilen;
     const sichtbar = [];
     zeilen.forEach((z, i) => { if (!z.gestrichen) sichtbar.push(i); });
     const akt = this.aktuelleZeile();
     let k = sichtbar.indexOf(akt);
     if (k < 0) k = 0;
-    const von = Math.max(0, k - 2), bis = Math.min(sichtbar.length, k + 6);
+    const von = this.blaettern ? 0 : Math.max(0, k - 2), bis = this.blaettern ? sichtbar.length : Math.min(sichtbar.length, k + 6);
 
     // Stichwörter und Cue-Chips nach Zielwort
     const stichAn = new Map(); // "z|wort" → {typ, bereit}
@@ -517,7 +625,34 @@ export class Laufzeit {
       }
       html.push(`<div class="${klasse.join(' ')}" data-z="${zi}"><div class="rolle">${esc(z.rolle)}</div><div>${text}</div></div>`);
     }
-    $('#prompter').innerHTML = html.join('') || '<div class="pz">Kein Skript.</div>';
+    pr.innerHTML = html.join('') || '<div class="pz">Kein Skript.</div>';
+    if (this.blaettern) {
+      this.prompterVoll = true;
+      pr.querySelector('.pz.aktuell')?.scrollIntoView({ block: 'center' });
+    } else {
+      pr.scrollTop = 0;
+    }
+  }
+
+  abHierLeisteZeigen() {
+    const leiste = $('#abHierLeiste');
+    leiste.hidden = !this.blaettern;
+    if (!this.blaettern) return;
+    const z = this.auswahlZeile != null ? this.st.zeilen[this.auswahlZeile] : null;
+    $('#abHierText').textContent = z
+      ? `${z.rolle ? z.rolle + ': ' : ''}„${z.text.slice(0, 60)}${z.text.length > 60 ? ' …' : ''}“`
+      : 'Pausiert – Text durchblättern und eine Zeile antippen, um ab dort zu starten.';
+    $('#btnAbHier').hidden = !z;
+  }
+
+  pauseUmschalten() {
+    this.pausiert = !this.pausiert;
+    this.letzterPartialPos = null;
+    this.blaettern = this.pausiert;
+    this.prompterVoll = false;
+    this.auswahlZeile = null;
+    toast(this.pausiert ? 'Pausiert – Text kann durchblättert werden' : 'Mitlesen läuft wieder', 1800);
+    this.render();
   }
 
   renderAmpel() {
@@ -566,12 +701,8 @@ export class Laufzeit {
     else if (a === 'zurueck') this.zeileSchritt(-1);
     else if (a === 'oeffnen') this.wiederOeffnen();
     else if (a === 'hilfe') $('#dlgTasten').showModal();
-    else if (a === 'pause') {
-      this.pausiert = !this.pausiert;
-      this.letzterPartialPos = null;
-      toast(this.pausiert ? 'Mitlesen pausiert' : 'Mitlesen läuft wieder', 1500);
-      this.render();
-    } else if (a === 'freeze') {
+    else if (a === 'pause') this.pauseUmschalten();
+    else if (a === 'freeze') {
       this.frozen = !this.frozen;
       this.letzterPartialPos = null;
       this.anzeigePos = this.goPos = this.tracker.pos;
@@ -595,6 +726,7 @@ export class Laufzeit {
     $('#prompter').addEventListener('click', (e) => {
       const z = e.target.closest('.pz');
       if (!z || !this.aktiv) return;
+      if (this.blaettern) { this.auswahlZeile = Number(z.dataset.z); this.renderPrompter(); return; }
       const b = this.ix.zeilenBereich[Number(z.dataset.z)];
       if (b && b.bis > b.von) this.setzePosition(b.von);
     });
@@ -616,6 +748,20 @@ export class Laufzeit {
     });
     document.addEventListener('visibilitychange', () => { if (this.aktiv && document.visibilityState === 'visible') this.wachHalten(); });
     $('#btnTasten').addEventListener('click', () => $('#dlgTasten').showModal());
+    $('#btnAbHier').addEventListener('click', () => { if (this.auswahlZeile != null) this.abHier(this.auswahlZeile); });
+    $('#btnAbHierWeiter').addEventListener('click', () => { if (this.pausiert) this.pauseUmschalten(); });
+    // Laufenden Cue antippen → beenden
+    $('#cueHaupt').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-laeuft]');
+      if (!b) return;
+      const c = this.cueVon(b.dataset.laeuft);
+      if (!confirm(`${S.cueLabel(c)} ${c.bezeichnung || ''} beenden?`)) return;
+      this.laufenBeenden(b.dataset.laeuft, 'manuell');
+      // ein eventuelles Ende-Stichwort ist damit auch erledigt
+      const ende = this.ix.reihenfolge.find((x) => x.id === `${c.id}#ende`);
+      if (ende) this.erledigt.add(ende.id);
+      this.aktualisieren();
+    });
 
     // Probe-Werkzeuge
     $('#simForm').addEventListener('submit', (e) => {

@@ -40,11 +40,13 @@ const TYP_ALIAS = { LX: 'LX', LICHT: 'LX', SND: 'SND', TON: 'SND', SOUND: 'SND',
 function markerZuCue(m, vorlauf) {
   const typ = TYP_ALIAS[m[1].toUpperCase()];
   let bez = (m[3] || '').trim();
-  let ausloeser = 'wort';
-  if (/\bmanuell\b/i.test(bez)) { ausloeser = 'manuell'; bez = bez.replace(/\s*\bmanuell\b\s*/i, ' ').trim(); }
+  let ausloeser = 'wort', einsatz = '';
+  // „manuell“ oder „manuell: nach dem Applaus“ → Cue ohne Stichwort, Text danach = Einsatz
+  const mm = bez.match(/\s*\bmanuell\b\s*(?::\s*(.*))?$/i);
+  if (mm) { ausloeser = 'manuell'; einsatz = (mm[1] || '').trim(); bez = bez.slice(0, mm.index).trim(); }
   return {
     id: neueId('c'), typ, nummer: (m[2] || '').replace(',', '.'), bezeichnung: bez,
-    vorlauf, notiz: '', ausloeser,
+    vorlauf, notiz: '', ausloeser, einsatz, dauer: null,
   };
 }
 
@@ -460,9 +462,22 @@ export function indexBauen(stueck) {
     zeilenBereich.push({ von, bis: gesprochen.length });
   });
 
+  // Dauer-Cues mit Endwort bekommen einen eigenen „Ende“-Cue, der wie ein normaler Cue angesagt wird
+  const alleCues = stueck.cues.slice();
+  for (const c of stueck.cues) {
+    const d = c.dauer;
+    if (d?.art === 'wort' && d.zeile) {
+      alleCues.push({
+        id: `${c.id}#ende`, typ: c.typ, nummer: c.nummer, bezeichnung: d.text || 'Ende',
+        zeile: d.zeile, wort: d.wort || 0, vorlauf: c.vorlauf, notiz: '', ausloeser: 'wort',
+        istEnde: true, zuCue: c.id,
+      });
+    }
+  }
+
   // Cues auflösen: erstes gesprochenes Wort an oder nach dem Anker
   const aufgeloest = new Map();
-  for (const c of stueck.cues) {
+  for (const c of alleCues) {
     const zi = zeilenIndex.has(c.zeile) ? zeilenIndex.get(c.zeile) : -1;
     let idx = gesprochen.length;
     if (zi >= 0) {
@@ -480,23 +495,28 @@ export function indexBauen(stueck) {
   }
 
   const typReihe = { LX: 0, SND: 1, VID: 2 };
-  const reihenfolge = stueck.cues.slice().sort((a, b) => {
+  const reihenfolge = alleCues.sort((a, b) => {
     const ra = aufgeloest.get(a.id), rb = aufgeloest.get(b.id);
     if (ra.idx !== rb.idx) return ra.idx - rb.idx;
     const za = zeilenIndex.get(a.zeile) ?? 1e9, zb = zeilenIndex.get(b.zeile) ?? 1e9;
     if (za !== zb) return za - zb;
     if (a.wort !== b.wort) return a.wort - b.wort;
     if (a.ausloeser !== b.ausloeser) return a.ausloeser === 'manuell' ? -1 : 1;
+    if (!!a.istEnde !== !!b.istEnde) return a.istEnde ? -1 : 1;
     if (a.typ !== b.typ) return typReihe[a.typ] - typReihe[b.typ];
     return parseFloat(a.nummer || 0) - parseFloat(b.nummer || 0);
   });
 
-  // Gruppen: Wort-Cues am selben Stichwort werden zusammen angesagt
+  // Gruppen: Cues am selben Stichwort werden zusammen angesagt.
+  // Manuelle Cues mit demselben Anker (z. B. über „Gleichzeitig mit“) bilden ebenfalls eine Gruppe.
   const gruppen = [];
   for (const c of reihenfolge) {
     const r = aufgeloest.get(c.id);
     const letzte = gruppen[gruppen.length - 1];
-    if (c.ausloeser !== 'manuell' && letzte && !letzte.manuell && letzte.idx === r.idx) {
+    const manuell = c.ausloeser === 'manuell';
+    const passt = letzte && letzte.manuell === manuell && letzte.idx === r.idx
+      && (!manuell || (letzte.cues[0].zeile === c.zeile && letzte.cues[0].wort === c.wort));
+    if (passt) {
       letzte.cues.push(c);
     } else {
       gruppen.push({ idx: r.idx, manuell: c.ausloeser === 'manuell', cues: [c] });
@@ -511,7 +531,31 @@ export function indexBauen(stueck) {
 }
 
 export function cueLabel(c) {
-  return `${c.typ} ${c.nummer || '?'}`.trim();
+  return `${c.typ} ${c.nummer || '?'}${c.istEnde ? ' Ende' : ''}`.trim();
+}
+
+// „1:30“ oder „90“ → 90 Sekunden
+export function sekundenLesen(t) {
+  const s = String(t ?? '').trim();
+  const m = s.match(/^(\d+):(\d{1,2})$/);
+  if (m) return Number(m[1]) * 60 + Number(m[2]);
+  const n = parseFloat(s.replace(',', '.'));
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : 0;
+}
+export function zeitText(sek) {
+  sek = Math.max(0, Math.round(sek));
+  return `${Math.floor(sek / 60)}:${String(sek % 60).padStart(2, '0')}`;
+}
+
+export function dauerBeschreibung(c, ix) {
+  const d = c.dauer;
+  if (!d?.art) return '';
+  const text = d.text ? ` → „${d.text}“` : '';
+  if (d.art === 'zeit') return `⏱ Timer ${zeitText(d.sekunden || 0)}${text}`;
+  if (d.art === 'manuell') return `▶ läuft, bis du ihn beendest${text}`;
+  const ziel = ix?.aufgeloest.get(`${c.id}#ende`)?.ziel;
+  const wort = ziel ? ix.tokensProZeile[ziel.z][ziel.wort]?.text : null;
+  return wort ? `▶ läuft bis „${wort}“${text}` : '▶ läuft bis … (Endwort fehlt)';
 }
 
 export function gruppenLabel(g) {

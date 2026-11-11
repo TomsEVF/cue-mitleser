@@ -180,6 +180,13 @@ class App {
     if (m === 'bearbeiten') this.editor.render();
   }
 
+  // Bearbeiten: „▶ ab hier“ an einer Zeile → Probe ab dieser Zeile
+  abHierStarten(zi) {
+    if (!this.stueck) return;
+    if (this.modus === 'bearbeiten') { this.startZeile = zi; this.setzeModus('probe'); }
+    else this.laufzeit.abHier(zi);
+  }
+
   zeigeAsrStatus(s) {
     const el = $('#asrStatus');
     const motor = { vosk: 'Vosk', apple: 'Apple', server: 'Mac' }[s.motor] || '';
