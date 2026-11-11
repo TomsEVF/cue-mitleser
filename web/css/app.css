@@ -351,3 +351,32 @@ button, .w, .mark, .pz { touch-action: manipulation; -webkit-tap-highlight-color
   .cue-karte .titel { font-size: 34px; }
   .cue-karte.go .titel { font-size: 44px; }
 }
+
+/* ---------- Dauer-Cues, Timer, Gleichzeitig, Einsatz (Bearbeiten) */
+.zeile.bereich { box-shadow: inset 3px 0 0 var(--b); }
+.zeile.bereich-LX { --b: #f5c51866; } .zeile.bereich-SND { --b: #4aa3ff66; } .zeile.bereich-VID { --b: #3ecf6e66; }
+.mark.ende { background: transparent !important; border: 1.5px solid; padding: 2px 5px; }
+.mark.ende.t-LX { color: var(--LX); } .mark.ende.t-SND { color: var(--SND); } .mark.ende.t-VID { color: var(--VID); }
+.cue-eintrag .dauer { font-size: 12px; color: #9fd0ff; }
+.cue-eintrag .mit { font-size: 12px; color: #c9b8ff; }
+.popover { max-height: calc(100dvh - 20px); overflow-y: auto; }
+.popover select { width: 100%; }
+
+/* ---------- Probe/Show: Einsatz, Timer-Erinnerung, laufende Cues */
+.cue-karte .einsatz { grid-column: 1; font-size: 22px; font-weight: 600; color: #fff; background: #ffffff14; padding: 4px 10px; border-radius: 6px; justify-self: start; }
+.cue-karte.erinnerung { border: 3px solid var(--typfarbe); background: var(--typdunkel); animation: puls 0.8s ease-in-out infinite; }
+.cue-karte.erinnerung .stufe, .cue-karte.erinnerung .titel { color: var(--typfarbe); }
+.laeuft-liste { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.laeuft-titel { font: 700 12px var(--mono); letter-spacing: .1em; color: var(--text3); margin-right: 4px; }
+.laeuft { background: #101214; border: 1px solid var(--typfarbe); border-radius: 18px; padding: 4px 12px; font-size: 14px; color: var(--text); }
+.laeuft b { color: var(--typfarbe); font-family: var(--mono); }
+.laeuft small { color: var(--text2); }
+.laeuft.typ-LX { --typfarbe: var(--LX); } .laeuft.typ-SND { --typfarbe: var(--SND); } .laeuft.typ-VID { --typfarbe: var(--VID); }
+
+/* ---------- Pause: Text durchblättern, ab hier starten */
+.prompter.blaettern { justify-content: flex-start; overflow-y: auto; -webkit-overflow-scrolling: touch; user-select: none; }
+.prompter.blaettern .pz { flex: none; }
+.pz.auswahl { outline: 2px solid #6aa8ff; background: #10223a; }
+.ab-hier { flex: none; display: flex; gap: 10px; align-items: center; padding: 8px 18px; background: #0d1a2b; border-top: 1px solid #23476f; color: #cfe3ff; }
+.ab-hier span { flex: 1; font-size: 15px; }
+.ab-hier button { min-height: 40px; }

@@ -142,14 +142,16 @@ ergibt die Überschrift „Erster Akt …“ und zwei manuelle SND-Cues: „O-To
 | `TYP` | `LX` / `LICHT` → LX · `SND` / `TON` / `SOUND` → SND · `VID` / `VIDEO` → VID (Groß-/Kleinschreibung egal) | ja |
 | `NUMMER` | `12`, `12.5`, `12,5` (wird zu `12.5`), `12a` | nein |
 | `BEZEICHNUNG` | freier Text bis `]` | nein |
-| `manuell` | Wort irgendwo in der Bezeichnung → Cue ohne Stichwort, wird per Leertaste quittiert | nein |
+| `manuell` | Wort am Ende der Bezeichnung → Cue ohne Stichwort, wird per „Erledigt“/Leertaste quittiert. Mit `manuell: Text` wird der Text als **Einsatz** angezeigt (wann der Cue kommt) | nein |
 
 - **GO-Wort:** das **nächste gesprochene Wort nach** dem Marker. Folgt in der Zeile keines, ist es das erste gesprochene Wort der folgenden Zeilen. Steht der Marker ganz am Ende des Stücks, ist es das letzte Wort.
 - **Nummer:** wird übernommen, wie sie im Marker steht.
 - **Vorlauf:** der Standardwert aus den Einstellungen (20 Wörter).
 - **Mehrere Marker** am selben Wort werden zu einer Ansage zusammengefasst (`GO LX 12 + SND 4`).
 
-Beispiele: `[LX 12 Blackout langsam]` · `[SND 4]` · `[VID 2 Projektion Fahrplan]` · `[SND 5 Applaus manuell]`
+Beispiele: `[LX 12 Blackout langsam]` · `[SND 4]` · `[VID 2 Projektion Fahrplan]` · `[SND 5 Applaus manuell]` · `[SND 6 Musik manuell: nach dem Applaus]`
+
+Dauer, Timer und „gleichzeitig mit“ werden im Bearbeiten-Modus im Cue-Formular eingestellt (Abschnitt 10).
 
 ### 7.2 Hinweis-Cue als eigene Zeile
 
@@ -239,7 +241,8 @@ Diese Aufbereitung betrifft nur den Abgleich mit der Spracherkennung, der angeze
   ],
   "cues": [
     { "id": "c-x1", "typ": "SND", "nummer": "5", "bezeichnung": "Es klingelt",
-      "zeile": "z-ab12", "wort": 14, "vorlauf": 20, "notiz": "", "ausloeser": "wort" }
+      "zeile": "z-ab12", "wort": 14, "vorlauf": 20, "notiz": "", "ausloeser": "wort", "einsatz": "",
+      "dauer": { "art": "zeit", "sekunden": 90, "text": "Klingel ausblenden" } }
   ],
   "einstellungen": { "schwelle": 70, "vorlauf": 20, "…": "…" }
 }
@@ -255,6 +258,9 @@ Diese Aufbereitung betrifft nur den Abgleich mit der Spracherkennung, der angeze
 | `cues[].wort` | 0-basierter Index des Worts in `text` (Wörter = durch Leerzeichen getrennt, Klammerwörter mitgezählt). Liegt das Wort in Regie oder einer gestrichenen Zeile, rutscht das GO auf das nächste gesprochene Wort. |
 | `cues[].vorlauf` | Wörter vor dem GO-Wort, ab denen „Standby“ angezeigt wird |
 | `cues[].ausloeser` | `wort` (GO beim Erkennen) · `manuell` (Standby nach dem vorigen Cue, Quittung per Leertaste) |
+| `cues[].einsatz` | nur bei `manuell`: Text, wann der Cue kommt („nach dem Applaus“), groß in der Standby-Karte |
+| `cues[].dauer` | `null` = einmaliger Cue, sonst `art`: `wort` (läuft bis `zeile`/`wort`, dort eigene Ansage „… Ende“) · `zeit` (Timer, meldet sich nach `sekunden`) · `manuell` (läuft, bis man ihn in der „Läuft“-Leiste beendet). `text` = Ansage am Ende |
+| gleichzeitig | Cues mit demselben Stichwort (bzw. manuelle Cues mit demselben Anker) werden zusammen angesagt und quittiert – im Formular über „Gleichzeitig mit“ |
 
 ---
 

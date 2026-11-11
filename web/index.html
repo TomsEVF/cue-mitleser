@@ -81,6 +81,11 @@
         <div class="lauf-haupt">
           <div id="cueHaupt" class="cue-haupt"></div>
           <div id="prompter" class="prompter"></div>
+          <div id="abHierLeiste" class="ab-hier" hidden>
+            <span id="abHierText"></span>
+            <button id="btnAbHier" class="primaer">▶ Ab hier starten</button>
+            <button id="btnAbHierWeiter">Weiter an der alten Stelle</button>
+          </div>
           <div class="steuerung" id="steuerung">
             <button data-aktion="zurueck" title="Zeile zurück (↑)">▲ Zeile</button>
             <button data-aktion="vor" title="Zeile vor (↓)">▼ Zeile</button>
@@ -150,6 +155,19 @@
       <label>Vorlauf (Wörter)<input name="vorlauf" type="number" min="0" max="500" size="4"></label>
       <label class="schalter"><input type="checkbox" name="manuell"> manuell (ohne Stichwort)</label>
     </div>
+    <label id="einsatzFeld">Einsatz – wann genau?<input name="einsatz" placeholder="z. B. nach dem Applaus, wenn die Tür zufällt"></label>
+    <label>Gleichzeitig mit<select name="mit"></select></label>
+    <div class="feld-reihe">
+      <label class="breit">Dauer / Ende<select name="dauerArt">
+        <option value="">einmalig (kein Ende)</option>
+        <option value="wort">läuft bis zu einem Stichwort</option>
+        <option value="zeit">Timer – meldet sich nach Ablauf</option>
+        <option value="manuell">läuft, bis ich ihn beende</option>
+      </select></label>
+      <label id="sekundenFeld">Zeit (m:ss)<input name="sekunden" size="6" placeholder="1:30" inputmode="numeric"></label>
+    </div>
+    <div class="feld-reihe" id="endwortFeld"><span id="endwortText" class="form-info"></span><span class="platz"></span><button type="button" id="btnEndwort">Endwort wählen</button></div>
+    <label id="dauerTextFeld">Ansage am Ende<input name="dauerText" placeholder="z. B. Musik ausblenden, Licht zurück"></label>
     <label>Notiz<input name="notiz" placeholder="z. B. auf Annas Abgang warten"></label>
     <div class="form-info" id="cueFormInfo"></div>
     <div class="form-knoepfe">
@@ -269,10 +287,10 @@
     <form method="dialog" class="dialog">
       <h2>Tastenkürzel</h2>
       <table class="tasten">
-        <tr><td><kbd>Leertaste</kbd></td><td>aktuellen Cue als erledigt markieren / manuellen Cue quittieren</td></tr>
+        <tr><td><kbd>Leertaste</kbd></td><td>aktuellen Cue als erledigt markieren / manuellen Cue quittieren / abgelaufenen Timer quittieren</td></tr>
         <tr><td><kbd>↓</kbd> <kbd>↑</kbd></td><td>Position eine Zeile vor / zurück</td></tr>
         <tr><td>Klick auf Zeile</td><td>Position dorthin setzen</td></tr>
-        <tr><td><kbd>P</kbd></td><td>Mitlesen pausieren / fortsetzen (Musik, Pause)</td></tr>
+        <tr><td><kbd>P</kbd></td><td>Mitlesen pausieren / fortsetzen. Während der Pause Text durchblättern und eine Zeile antippen → „Ab hier starten“</td></tr>
         <tr><td><kbd>F</kbd></td><td>Freeze: Position fest, bis manuell weiter</td></tr>
         <tr><td><kbd>Z</kbd></td><td>letzten erledigten Cue wieder öffnen</td></tr>
       </table>

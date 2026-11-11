@@ -71,14 +71,28 @@ die veröffentlichte App inklusive Modell nur in `gh-pages`.
 | **Probe** | wie Show, plus Debug-Spalte: erkannter Text, Trefferquote, Simulation per Tastatur, Mitschnitt |
 | **Show** | ruhige Anzeige: Cue-Karte (Standby → Bereit → GO), Prompter, nächste Cues, Pegel, Ampel. Bearbeiten ist gesperrt |
 
+### Cue-Arten (im Cue-Formular)
+
+- **Einmalig:** GO am Stichwort.
+- **Läuft bis zu einem Stichwort:** z. B. Musik oder Lichtstimmung. „Endwort wählen“ und dann ein Wort antippen. Dort kommt eine eigene Ansage („GO SND 4 Ende – Musik ausblenden“). Im Skript ist der Bereich am Rand markiert.
+- **Timer:** Nach dem GO läuft die Zeit (z. B. `1:30`). Danach meldet sich der Cue mit dem Text unter „Ansage am Ende“ und wird mit „Erledigt“ quittiert.
+- **Läuft, bis ich ihn beende:** steht in der „Läuft“-Leiste, Antippen beendet ihn.
+- **Gleichzeitig mit:** übernimmt den Einsatz eines anderen Cues. Beide werden zusammen angesagt und quittiert, mit oder ohne Stichwort.
+- **Manuell (ohne Stichwort):** Im Feld „Einsatz – wann genau?“ steht, wann es losgeht. Das wird groß in der Standby-Karte angezeigt.
+
+### Text
+
+- **Pause** (P oder Knopf): Der Text lässt sich frei durchblättern. Eine Zeile antippen und dann **„▶ Ab hier starten“**. Alles davor gilt als erledigt, alles danach ist offen, und Musik, die über diese Stelle hinausläuft, steht in der „Läuft“-Leiste.
+- Im Bearbeiten-Modus startet **▶** an jeder Zeile die Probe ab dieser Zeile.
+
 ### Tasten im Probe-/Show-Modus (oder Touch-Leiste)
 
 | Taste | Wirkung |
 | --- | --- |
-| Leertaste | aktuellen Cue erledigt / manuellen Cue quittieren |
+| Leertaste | aktuellen Cue erledigt / manuellen Cue / abgelaufenen Timer quittieren |
 | ↓ / ↑ | Position eine Zeile vor / zurück |
 | Klick auf Zeile | Position dorthin |
-| P | Mitlesen pausieren (Musik, Pause) |
+| P | Mitlesen pausieren, Text durchblättern, „Ab hier starten“ |
 | F | Freeze – Position fest bis zur nächsten manuellen Korrektur |
 | Z | zuletzt erledigten Cue wieder öffnen |
 
