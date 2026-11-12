@@ -58,6 +58,7 @@ export class Laufzeit {
 
   wechsle(modus) {
     if (this.modus === 'probe') this.probeSpeichern();
+    if (this.cueEdit) this.cueBearbeiten(false);
     this.modus = modus;
     this.layout();
     this.aktualisieren();
@@ -71,6 +72,7 @@ export class Laufzeit {
     clearInterval(this.takt);
     this.app.verbindung.stopp();
     $('#wiederherstellung').hidden = true;
+    if (this.cueEdit) { this.cueEdit = false; document.body.classList.remove('cue-edit'); }
     this.wachLock?.release?.().catch(() => {});
     this.wachLock = null;
   }
@@ -127,7 +129,67 @@ export class Laufzeit {
       const b = this.wortBereich.get(k);
       if (b) b[1] = i + 1; else this.wortBereich.set(k, [i, i + 1]);
     });
+    if (this.aktiv && pos === undefined) {
+      // Änderung während der Probe: neue/verschobene Cues hinter der Position nicht nachträglich als GO melden
+      for (const g of this.ix.gruppen) {
+        const k = gKey(g);
+        if (!g.manuell && g.idx < this.goPos && !this.gruppeErledigt(g) && !this.goZeit.has(k)) {
+          for (const c of g.cues) this.erledigt.add(c.id);
+          this.stufen.set(k, 'erledigt');
+        }
+      }
+      if (this.blaettern) { this.blaetternScroll = $('#prompter').scrollTop; this.prompterVoll = false; }
+    }
     if (this.aktiv) this.aktualisieren();
+  }
+
+  // ---------------------------------------------------------------- Cues in der Probe bearbeiten
+  // Bearbeiten-Ansicht: Mitlesen pausiert, ganzer Text blätterbar, Wort antippen = neuer Cue, Marke antippen = ändern
+  cueBearbeiten(an = !this.cueEdit) {
+    if (this.modus !== 'probe' && an) return;
+    this.cueEdit = an;
+    document.body.classList.toggle('cue-edit', an);
+    if (an && !this.pausiert) this.pauseUmschalten(true);
+    if (!an) {
+      this.app.editor.formularSchliessen();
+      this.app.editor.verschiebenEnde();
+      if (this.pausiert) this.pauseUmschalten(true);
+    }
+    this.render();
+  }
+
+  // Neuer Cue am gerade gesprochenen Wort
+  neuerCueJetzt(el) {
+    const g = this.ix.gesprochen[Math.max(0, Math.min(this.ix.gesprochen.length - 1, this.anzeigePos - 1))];
+    if (!g) return;
+    this.app.editor.formularOeffnen(el || $('#cueHaupt'), { neu: true, zeile: this.st.zeilen[g.z].id, wort: g.wort });
+  }
+
+  // Stichwort einer Gruppe auf ein anderes gesprochenes Wort legen (Timing in der Probe anpassen)
+  gruppeAnIdx(g, idx) {
+    idx = Math.max(0, Math.min(this.ix.gesprochen.length - 1, idx));
+    const ziel = this.ix.gesprochen[idx];
+    if (!ziel) return;
+    const zeileId = this.st.zeilen[ziel.z].id;
+    const k = gKey(g);
+    if (idx < this.goPos) this.goZeit.set(k, this.goZeit.get(k) || Date.now()); else this.goZeit.delete(k);
+    this.app.aendern((st) => {
+      for (const c of g.cues) {
+        if (c.istEnde) { const p = st.cues.find((x) => x.id === c.zuCue); if (p) p.dauer = { ...p.dauer, zeile: zeileId, wort: ziel.wort }; }
+        else { const x = st.cues.find((y) => y.id === c.id); if (x) { x.zeile = zeileId; x.wort = ziel.wort; } }
+      }
+    }, { render: false });
+    toast(`${S.gruppenLabel(g)}: GO jetzt bei „${this.ix.tokensProZeile[ziel.z][ziel.wort]?.text}“`, 2200);
+  }
+
+  karteAktion(aktion, key, el) {
+    const g = this.ix.gruppen.find((x) => gKey(x) === key);
+    if (!g) return;
+    if (aktion === 'bearbeiten') { this.app.editor.markeAntippen(el, g.cues[0].id); return; }
+    if (g.manuell) return;
+    if (aktion === 'frueher') this.gruppeAnIdx(g, g.idx - 1);
+    if (aktion === 'spaeter') this.gruppeAnIdx(g, g.idx + 1);
+    if (aktion === 'jetzt') this.gruppeAnIdx(g, this.anzeigePos - 1);
   }
 
   // ---------------------------------------------------------------- Wiederherstellen nach Absturz
@@ -511,6 +573,13 @@ export class Laufzeit {
     const zeigeRest = !g.manuell && s !== 'go';
     const breite = g.vorlauf ? Math.max(0, Math.min(100, (rest / g.vorlauf) * 100)) : 0;
     const cls = ['cue-karte', `typ-${c0.typ}`, s === 'standby' ? 'manuell-standby' : s, klein ? 'klein' : ''];
+    const k = esc(gKey(g));
+    const knoepfe = this.modus !== 'probe' ? '' : `<div class="karte-knoepfe">
+      ${g.manuell ? '' : `<button data-ka="frueher" data-g="${k}" title="GO ein Wort früher">◀ früher</button>
+      <button data-ka="spaeter" data-g="${k}" title="GO ein Wort später">später ▶</button>
+      <button data-ka="jetzt" data-g="${k}" title="GO auf das gerade gesprochene Wort legen">⏱ GO jetzt</button>`}
+      <button data-ka="bearbeiten" data-g="${k}" title="Cue bearbeiten">✎ bearbeiten</button>
+    </div>`;
     return `<div class="${cls.join(' ')}">
       <div class="stufe">${stufeText}</div>
       <div class="titel">${esc(titel)}</div>
@@ -520,6 +589,7 @@ export class Laufzeit {
       ${notiz ? `<div class="notiz">${esc(notiz)}</div>` : ''}
       ${zeigeRest ? `<div class="rest">${rest}<small>Wörter</small></div>` : ''}
       ${zeigeRest && (s === 'warnung' || s === 'bereit') ? `<div class="balken"><div style="width:${breite}%"></div></div>` : ''}
+      ${knoepfe}
     </div>`;
   }
 
@@ -562,7 +632,8 @@ export class Laufzeit {
       return `<button class="laeuft typ-${c.typ}" data-laeuft="${id}" title="Antippen beendet den Cue"><b>▶ ${esc(S.cueLabel(c))}</b> ${esc(c.bezeichnung || '')} <small>${info}</small></button>`;
     }).join('');
     if (laeuft) html += `<div class="laeuft-liste"><span class="laeuft-titel">Läuft</span>${laeuft}</div>`;
-    $('#cueHaupt').innerHTML = html;
+    // nur neu zeichnen, wenn sich etwas geändert hat (Knöpfe bleiben antippbar)
+    if (html !== this.letzteCueHtml) { $('#cueHaupt').innerHTML = html; this.letzteCueHtml = html; }
 
     $('#naechsteCues').innerHTML = rest.slice(0, 3).map(([g]) => {
       const einsatz = g.cues.map((c) => c.einsatz).filter(Boolean).join(' · ');
@@ -598,7 +669,7 @@ export class Laufzeit {
         if (!ziel) continue;
         const key = `${ziel.z}|${ziel.wort}`;
         if (!chipsAn.has(key)) chipsAn.set(key, []);
-        chipsAn.get(key).push(`<span class="cue-chip typ-${c.typ}${c.ausloeser === 'manuell' ? ' manuell' : ''}${this.erledigt.has(c.id) ? ' erledigt' : ''}">${esc(S.cueLabel(c))}</span>`);
+        chipsAn.get(key).push(`<span data-cue="${c.id}" class="cue-chip typ-${c.typ}${c.ausloeser === 'manuell' ? ' manuell' : ''}${this.erledigt.has(c.id) ? ' erledigt' : ''}">${esc(S.cueLabel(c))}</span>`);
         if (!g.manuell && s !== 'erledigt' && !stichAn.has(key)) stichAn.set(key, { typ: c.typ, bereit: s === 'bereit' });
       }
     });
@@ -621,14 +692,15 @@ export class Laufzeit {
         }
         const st = stichAn.get(key);
         if (st) cls.push('stich', `typ-${st.typ}`, st.bereit ? 'bereit' : '');
-        text += (chipsAn.get(key) || []).join('') + `<span class="${cls.join(' ')}">${esc(tk.text)}</span> `;
+        text += (chipsAn.get(key) || []).join('') + `<span class="${cls.join(' ')}" data-z="${zi}" data-w="${tk.idx}">${esc(tk.text)}</span> `;
       }
       html.push(`<div class="${klasse.join(' ')}" data-z="${zi}"><div class="rolle">${esc(z.rolle)}</div><div>${text}</div></div>`);
     }
     pr.innerHTML = html.join('') || '<div class="pz">Kein Skript.</div>';
     if (this.blaettern) {
       this.prompterVoll = true;
-      pr.querySelector('.pz.aktuell')?.scrollIntoView({ block: 'center' });
+      if (this.blaetternScroll != null) { pr.scrollTop = this.blaetternScroll; this.blaetternScroll = null; }
+      else pr.querySelector('.pz.aktuell')?.scrollIntoView({ block: 'center' });
     } else {
       pr.scrollTop = 0;
     }
@@ -638,6 +710,17 @@ export class Laufzeit {
     const leiste = $('#abHierLeiste');
     leiste.hidden = !this.blaettern;
     if (!this.blaettern) return;
+    leiste.classList.toggle('bearbeiten', !!this.cueEdit);
+    $('#btnCueEditFertig').hidden = !this.cueEdit;
+    $('#btnAbHierWeiter').hidden = !!this.cueEdit;
+    if (this.cueEdit) {
+      const ed = this.app.editor;
+      $('#abHierText').textContent = ed.endwortFuer ? 'Wort antippen, bei dem der Cue endet'
+        : ed.verschieben ? 'Neues Stichwort antippen'
+        : '✎ Cues bearbeiten: Wort antippen = neuer Cue · Marke antippen = ändern';
+      $('#btnAbHier').hidden = true;
+      return;
+    }
     const z = this.auswahlZeile != null ? this.st.zeilen[this.auswahlZeile] : null;
     $('#abHierText').textContent = z
       ? `${z.rolle ? z.rolle + ': ' : ''}„${z.text.slice(0, 60)}${z.text.length > 60 ? ' …' : ''}“`
@@ -645,13 +728,14 @@ export class Laufzeit {
     $('#btnAbHier').hidden = !z;
   }
 
-  pauseUmschalten() {
+  pauseUmschalten(leise = false) {
     this.pausiert = !this.pausiert;
     this.letzterPartialPos = null;
     this.blaettern = this.pausiert;
     this.prompterVoll = false;
+    this.blaetternScroll = null;
     this.auswahlZeile = null;
-    toast(this.pausiert ? 'Pausiert – Text kann durchblättert werden' : 'Mitlesen läuft wieder', 1800);
+    if (!leise) toast(this.pausiert ? 'Pausiert – Text kann durchblättert werden' : 'Mitlesen läuft wieder', 1800);
     this.render();
   }
 
@@ -701,7 +785,9 @@ export class Laufzeit {
     else if (a === 'zurueck') this.zeileSchritt(-1);
     else if (a === 'oeffnen') this.wiederOeffnen();
     else if (a === 'hilfe') $('#dlgTasten').showModal();
-    else if (a === 'pause') this.pauseUmschalten();
+    else if (a === 'pause') { if (this.cueEdit) this.cueBearbeiten(false); else this.pauseUmschalten(); }
+    else if (a === 'neu' && this.modus === 'probe') this.neuerCueJetzt(document.querySelector('#steuerung [data-aktion="neu"]'));
+    else if (a === 'bearbeiten' && this.modus === 'probe') this.cueBearbeiten();
     else if (a === 'freeze') {
       this.frozen = !this.frozen;
       this.letzterPartialPos = null;
@@ -726,6 +812,13 @@ export class Laufzeit {
     $('#prompter').addEventListener('click', (e) => {
       const z = e.target.closest('.pz');
       if (!z || !this.aktiv) return;
+      if (this.cueEdit) {
+        const chip = e.target.closest('.cue-chip');
+        const w = e.target.closest('.w[data-w]');
+        if (chip && !this.app.editor.verschieben && !this.app.editor.endwortFuer) this.app.editor.markeAntippen(chip, chip.dataset.cue);
+        else if (w) this.app.editor.wortAntippen(w, Number(w.dataset.z), Number(w.dataset.w));
+        return;
+      }
       if (this.blaettern) { this.auswahlZeile = Number(z.dataset.z); this.renderPrompter(); return; }
       const b = this.ix.zeilenBereich[Number(z.dataset.z)];
       if (b && b.bis > b.von) this.setzePosition(b.von);
@@ -733,10 +826,11 @@ export class Laufzeit {
 
     document.addEventListener('keydown', (e) => {
       if (!this.aktiv || this.app.modus === 'bearbeiten') return;
-      if (document.querySelector('dialog[open]')) return;
+      if (document.querySelector('dialog[open]') || !$('#cueForm').hidden) return;
       if (e.target.closest?.('input, textarea, select')) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
-      const aktion = { ' ': 'erledigt', arrowdown: 'vor', arrowup: 'zurueck', p: 'pause', f: 'freeze', z: 'oeffnen', '?': 'hilfe' }[e.key.toLowerCase()];
+      if (e.key === 'Escape' && this.cueEdit) { this.cueBearbeiten(false); return; }
+      const aktion = { ' ': 'erledigt', arrowdown: 'vor', arrowup: 'zurueck', p: 'pause', f: 'freeze', z: 'oeffnen', '?': 'hilfe', n: 'neu', e: 'bearbeiten' }[e.key.toLowerCase()];
       if (!aktion) return;
       e.preventDefault();
       this.aktion(aktion);
@@ -750,13 +844,23 @@ export class Laufzeit {
     $('#btnTasten').addEventListener('click', () => $('#dlgTasten').showModal());
     $('#btnAbHier').addEventListener('click', () => { if (this.auswahlZeile != null) this.abHier(this.auswahlZeile); });
     $('#btnAbHierWeiter').addEventListener('click', () => { if (this.pausiert) this.pauseUmschalten(); });
+    $('#btnCueEditFertig').addEventListener('click', () => this.cueBearbeiten(false));
     // Laufenden Cue antippen → beenden
     $('#cueHaupt').addEventListener('click', (e) => {
+      const ka = e.target.closest('[data-ka]');
+      if (ka) { this.karteAktion(ka.dataset.ka, ka.dataset.g, ka); return; }
       const b = e.target.closest('[data-laeuft]');
       if (!b) return;
       const c = this.cueVon(b.dataset.laeuft);
       if (!confirm(`${S.cueLabel(c)} ${c.bezeichnung || ''} beenden?`)) return;
+      const gemessen = Math.round((Date.now() - (this.laufend.get(c.id)?.start || Date.now())) / 1000);
       this.laufenBeenden(b.dataset.laeuft, 'manuell');
+      // Probe: gemessene Laufzeit als Timer übernehmen
+      if (this.modus === 'probe' && gemessen > 0 && (c.dauer.art === 'zeit' || c.dauer.art === 'manuell')
+        && confirm(`Gemessene Laufzeit ${S.zeitText(gemessen)} als Timer für ${S.cueLabel(c)} speichern?`)) {
+        this.app.aendern((st) => { const x = st.cues.find((y) => y.id === c.id); x.dauer = { ...x.dauer, art: 'zeit', sekunden: gemessen }; }, { render: false });
+        toast(`${S.cueLabel(c)}: Timer jetzt ${S.zeitText(gemessen)}.`);
+      }
       // ein eventuelles Ende-Stichwort ist damit auch erledigt
       const ende = this.ix.reihenfolge.find((x) => x.id === `${c.id}#ende`);
       if (ende) this.erledigt.add(ende.id);

@@ -85,6 +85,7 @@
             <span id="abHierText"></span>
             <button id="btnAbHier" class="primaer">▶ Ab hier starten</button>
             <button id="btnAbHierWeiter">Weiter an der alten Stelle</button>
+            <button id="btnCueEditFertig" class="primaer" hidden>✓ Fertig – weiter mitlesen</button>
           </div>
           <div class="steuerung" id="steuerung">
             <button data-aktion="zurueck" title="Zeile zurück (↑)">▲ Zeile</button>
@@ -92,6 +93,8 @@
             <button data-aktion="pause" title="Mitlesen pausieren (P)">⏸ Pause</button>
             <button data-aktion="freeze" title="Position einfrieren (F)">❄ Freeze</button>
             <button data-aktion="oeffnen" title="Letzten Cue wieder öffnen (Z)">↺ Cue zurück</button>
+            <button data-aktion="neu" class="nur-probe" title="Neuer Cue am gerade gesprochenen Wort (N)">＋ Cue jetzt</button>
+            <button data-aktion="bearbeiten" class="nur-probe" title="Cues im Text bearbeiten (E)">✎ Cues</button>
             <button data-aktion="erledigt" class="erledigt" title="Cue erledigt (Leertaste)">✓ Erledigt</button>
           </div>
           <footer class="lauf-fuss">
@@ -293,6 +296,9 @@
         <tr><td><kbd>P</kbd></td><td>Mitlesen pausieren / fortsetzen. Während der Pause Text durchblättern und eine Zeile antippen → „Ab hier starten“</td></tr>
         <tr><td><kbd>F</kbd></td><td>Freeze: Position fest, bis manuell weiter</td></tr>
         <tr><td><kbd>Z</kbd></td><td>letzten erledigten Cue wieder öffnen</td></tr>
+        <tr><td><kbd>N</kbd></td><td>Probe: neuer Cue am gerade gesprochenen Wort</td></tr>
+        <tr><td><kbd>E</kbd></td><td>Probe: Cues im Text bearbeiten (Wort antippen = neu, Marke antippen = ändern), Esc = fertig</td></tr>
+        <tr><td>Knöpfe auf der Cue-Karte</td><td>Probe: ◀ früher / später ▶ verschiebt das GO um ein Wort, ⏱ GO jetzt legt es auf das gerade gesprochene Wort</td></tr>
       </table>
       <div class="form-knoepfe"><span class="platz"></span><button value="ok" class="primaer">OK</button></div>
     </form>

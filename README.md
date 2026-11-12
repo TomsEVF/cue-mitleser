@@ -80,6 +80,17 @@ die veröffentlichte App inklusive Modell nur in `gh-pages`.
 - **Gleichzeitig mit:** übernimmt den Einsatz eines anderen Cues. Beide werden zusammen angesagt und quittiert, mit oder ohne Stichwort.
 - **Manuell (ohne Stichwort):** Im Feld „Einsatz – wann genau?“ steht, wann es losgeht. Das wird groß in der Standby-Karte angezeigt.
 
+### Cues in der Probe bearbeiten
+
+- **＋ Cue jetzt** (oder N): Formular für einen neuen Cue am gerade gesprochenen Wort. Das Mitlesen läuft weiter.
+- **✎ Cues** (oder E): Das Mitlesen pausiert, der ganze Text ist blätterbar. Wort antippen = neuer Cue,
+  Cue-Marke antippen = ändern, verschieben, Endwort setzen. „✓ Fertig“ liest weiter.
+- **Timing auf der Cue-Karte:** „◀ früher“ / „später ▶“ verschieben das GO um ein Wort, „⏱ GO jetzt“ legt es
+  auf das gerade gesprochene Wort, „✎ bearbeiten“ öffnet das Formular (Vorlauf, Timer, Einsatz …).
+- **Laufzeit messen:** Einen laufenden Cue in der „Läuft“-Leiste antippen und beenden. Die App bietet an,
+  die gemessene Zeit als Timer zu speichern.
+- Alle Änderungen werden sofort gespeichert. Im Show-Modus ist Bearbeiten gesperrt.
+
 ### Text
 
 - **Pause** (P oder Knopf): Der Text lässt sich frei durchblättern. Eine Zeile antippen und dann **„▶ Ab hier starten“**. Alles davor gilt als erledigt, alles danach ist offen, und Musik, die über diese Stelle hinausläuft, steht in der „Läuft“-Leiste.

@@ -1,7 +1,7 @@
 // Service Worker: macht die App offline nutzbar (iPad im Theater ohne WLAN).
 // Strategie: sofort aus dem Cache antworten und im Hintergrund aktualisieren.
 // Das Sprachmodell verwaltet erkennung.js selbst (Cache „cue-sprachmodell-v1“).
-const VERSION = 'cue-app-v2';
+const VERSION = 'cue-app-v3';
 const DATEIEN = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'js/main.js', 'js/editor.js', 'js/show.js', 'js/skript.js', 'js/tracker.js', 'js/zahlen.js',
