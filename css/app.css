@@ -403,3 +403,10 @@ body.cue-edit .prompter .pz { cursor: default; }
 .diag-ergebnis.schlecht { background: #4a1d1b; color: #ffd9d6; }
 #dlgDiagnose .bericht { max-height: 30vh; font-size: 12px; }
 button.asr { background: none; border: 0; padding: 4px 6px; color: inherit; font-size: 13px; min-height: 0; cursor: pointer; }
+
+/* ---------- Sprachmodell verwalten */
+.modell-bereich { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border: 1px solid var(--linie); border-radius: var(--radius); background: var(--bg); }
+.modell-knoepfe { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.hinweis.gut { color: #9be3b0; }
+.hinweis.schlecht { color: #ffb3ad; }
+#ampel { cursor: pointer; }

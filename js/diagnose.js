@@ -1,6 +1,6 @@
 // „Mikrofon & Erkennung testen“: prüft auf dem Gerät Schritt für Schritt, wo es hakt,
 // und erzeugt einen Bericht zum Kopieren.
-import { voskModellStarten, modellImCache, MODELL_URL } from './erkennung.js';
+import { voskModellStarten, modellInfo, MODELL_URL } from './erkennung.js';
 import { lokal } from './hilfen.js';
 
 const $ = (s) => document.querySelector(s);
@@ -85,6 +85,7 @@ export class Diagnose {
   async ablauf() {
     const v = this.app.verbindung;
     const motor = v.motorId;
+    this.log(null, `App-Version: ${this.app.version || '?'}`);
     this.log(null, `Gerät: ${navigator.userAgent}`);
     this.log(null, `Als App vom Home-Bildschirm: ${matchMedia('(display-mode: standalone)').matches || navigator.standalone ? 'ja' : 'nein'}`);
     this.log(window.isSecureContext, `Sichere Verbindung (https): ${location.origin}`);
@@ -162,8 +163,8 @@ export class Diagnose {
 
   async voskTest() {
     const url = lokal('cue.modellUrl') || MODELL_URL;
-    const imCache = await modellImCache(url);
-    this.log(null, `Sprachmodell ${imCache ? 'ist gespeichert' : 'wird geladen (ca. 45 MB)'} …`);
+    const info = await modellInfo(url);
+    this.log(info.gespeichert ? info.ok : null, `Sprachmodell: ${!info.gespeichert ? 'nicht gespeichert – wird geladen (ca. 45 MB)' : info.ok ? `gespeichert, ${MB(info.groesse)} (${info.quelle})` : `BESCHÄDIGT (${MB(info.groesse)}) – wird neu geladen`} · Adresse ${url}`);
     const t0 = performance.now();
     let modell = this.app.verbindung.motoren.vosk.modell;
     if (!modell) {

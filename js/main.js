@@ -2,7 +2,9 @@
 import * as S from './skript.js';
 import { Editor } from './editor.js';
 import { Laufzeit } from './show.js';
-import { Erkennung, entsperren, modellImCache, MODELL_URL } from './erkennung.js';
+import { Erkennung, entsperren, MODELL_URL, modellInfo, modellHerunterladen, modellLoeschen, modellAusDatei, voskModellStarten } from './erkennung.js';
+
+export const APP_VERSION = '2026-11-12 b';
 import { dateiLesen } from './datei-import.js';
 import { Diagnose } from './diagnose.js';
 import { modellAbsturzVermutet } from './erkennung.js';
@@ -23,6 +25,7 @@ class App {
     this.verbindung = new Erkennung();
     this.editor = new Editor(this);
     this.laufzeit = new Laufzeit(this);
+    this.version = APP_VERSION;
     this.diagnose = new Diagnose(this);
     this.bindeKopf();
     this.bindeDialoge();
@@ -207,13 +210,38 @@ class App {
   // Offline-Fähigkeit (iPad, GitHub Pages). Am Mac-Server nicht nötig.
   serviceWorker(modus) {
     if (modus === 'server' || !('serviceWorker' in navigator) || !window.isSecureContext) return;
-    navigator.serviceWorker.register('sw.js').catch((e) => console.warn('Service Worker:', e));
+    const hatteController = !!navigator.serviceWorker.controller;
+    let einmal = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hatteController || einmal) return;
+      einmal = true;
+      if (this.modus === 'bearbeiten') this.jetztSpeichern().then(() => location.reload());
+      else toast('Neue Version der App ist da – nach Probe/Show einmal neu laden.', 8000);
+    });
+    navigator.serviceWorker.register('sw.js').then((reg) => reg.update?.()).catch((e) => console.warn('Service Worker:', e));
   }
 
   // ---------------------------------------------------------------- Kopfleiste
   bindeKopf() {
     $('#stueckListe').addEventListener('change', (e) => this.oeffnen(e.target.value));
     $('#asrStatus').addEventListener('click', () => this.diagnose.oeffnen());
+    $('#ampel').addEventListener('click', () => this.diagnose.oeffnen());
+    $('#btnModellLaden').addEventListener('click', () => this.modellAktion('laden'));
+    $('#btnModellNeu').addEventListener('click', () => this.modellAktion('neu'));
+    $('#btnModellTesten').addEventListener('click', () => this.modellAktion('testen'));
+    $('#btnModellLoeschen').addEventListener('click', () => this.modellAktion('loeschen'));
+    $('#btnModellDatei').addEventListener('click', () => $('#modellDatei').click());
+    $('#modellDatei').addEventListener('change', (e) => this.modellDatei(e.target.files[0]));
+    $('#modellUrl').addEventListener('change', (e) => {
+      const v = e.target.value.trim();
+      lokal('cue.modellUrl', v && v !== MODELL_URL ? v : null);
+      this.verbindung.modellEntladen();
+      this.modellStatusZeigen();
+    });
+    $('#btnAppAktualisieren').addEventListener('click', () => {
+      if (this.modus === 'show' && !confirm('Während der Show neu laden?')) return;
+      this.appAktualisieren();
+    });
     $('#btnDiagnose').addEventListener('click', () => {
       const motorSel = $('#einstMotor');
       if (motorSel.value !== this.verbindung.motorId) this.verbindung.waehle(motorSel.value);
@@ -338,6 +366,95 @@ class App {
     dlg.showModal();
   }
 
+  // ---------------------------------------------------------------- Sprachmodell verwalten
+  modellUrl() { return lokal('cue.modellUrl') || MODELL_URL; }
+
+  async modellStatusZeigen(text) {
+    const el = $('#modellStatus');
+    if (text) { el.textContent = text; return; }
+    const i = await modellInfo(this.modellUrl());
+    const geladen = this.verbindung.motoren.vosk.modell ? ' · gestartet' : '';
+    const mb = (b) => `${(b / 1048576).toFixed(1).replace('.', ',')} MB`;
+    const datum = i.zeit ? ` vom ${new Date(i.zeit).toLocaleDateString('de-DE')}` : '';
+    el.textContent = !i.gespeichert ? '– noch nicht auf diesem Gerät gespeichert.'
+      : !i.ok ? `⚠ gespeicherte Datei ist beschädigt (${mb(i.groesse)}) – bitte „Neu laden“.`
+      : `✓ gespeichert (${mb(i.groesse)}, ${i.quelle}${datum}) – offline nutzbar${geladen}.`;
+    el.className = `hinweis ${!i.gespeichert ? '' : i.ok ? 'gut' : 'schlecht'}`;
+  }
+
+  modellFortschritt(p, geladen, gesamt) {
+    $('#modellFortschrittRahmen').hidden = false;
+    $('#modellFortschritt').style.width = `${p ?? 0}%`;
+    const mb = (b) => (b / 1048576).toFixed(1).replace('.', ',');
+    $('#modellStatus').textContent = `Lade … ${p ?? ''}${p != null ? ' %' : ''} (${mb(geladen || 0)}${gesamt ? ` von ${mb(gesamt)}` : ''} MB)`;
+    $('#modellStatus').className = 'hinweis';
+  }
+
+  async modellAktion(name) {
+    const knoepfe = document.querySelectorAll('#modellZeile button');
+    knoepfe.forEach((b) => { b.disabled = true; });
+    const url = this.modellUrl();
+    let lief = false;
+    try {
+      if (name === 'laden' || name === 'neu') {
+        lief = this.verbindung.modellEntladen();
+        if (name === 'neu') await modellLoeschen(url);
+        const i = await modellInfo(url);
+        if (i.gespeichert && i.ok && name === 'laden') await this.modellStatusZeigen();
+        else {
+          await modellHerunterladen(url, (p, g, t) => this.modellFortschritt(p, g, t));
+          await this.modellStatusZeigen();
+        }
+      } else if (name === 'testen') {
+        lief = this.verbindung.modellEntladen();
+        const t0 = performance.now();
+        const m = await voskModellStarten(url, (p, g, t) => this.modellFortschritt(p, g, t), (t) => this.modellStatusZeigen(t));
+        this.verbindung.motoren.vosk.modell = m;
+        await this.modellStatusZeigen();
+        $('#modellStatus').textContent += ` Start-Test ok (${((performance.now() - t0) / 1000).toFixed(1)} s).`;
+      } else if (name === 'loeschen') {
+        if (!confirm('Gespeichertes Sprachmodell von diesem Gerät löschen?')) return;
+        lief = this.verbindung.modellEntladen();
+        await modellLoeschen(url);
+        await this.modellStatusZeigen();
+      }
+    } catch (e) {
+      await this.modellStatusZeigen(`✗ ${e.message}`);
+      $('#modellStatus').className = 'hinweis schlecht';
+    } finally {
+      knoepfe.forEach((b) => { b.disabled = false; });
+      setTimeout(() => { $('#modellFortschrittRahmen').hidden = true; }, 1500);
+      if (lief && this.laufzeit.aktiv) this.laufzeit.mikroStart();
+    }
+  }
+
+  async modellDatei(datei) {
+    if (!datei) return;
+    const lief = this.verbindung.modellEntladen();
+    try {
+      await modellAusDatei(datei, this.modellUrl(), (t) => this.modellStatusZeigen(t));
+      await this.modellStatusZeigen();
+      $('#modellStatus').textContent += ' Aus Datei übernommen – „Starten (Test)“ prüft es.';
+    } catch (e) {
+      await this.modellStatusZeigen(`✗ ${e.message}`);
+      $('#modellStatus').className = 'hinweis schlecht';
+    }
+    $('#modellDatei').value = '';
+    if (lief && this.laufzeit.aktiv) this.laufzeit.mikroStart();
+  }
+
+  // Neueste Version laden: nur den App-Speicher leeren (Stücke und Sprachmodell bleiben).
+  // Den Service Worker nicht abmelden – Safari löscht dabei sonst auch das gespeicherte Modell.
+  async appAktualisieren() {
+    await this.jetztSpeichern();
+    try {
+      const keys = await caches.keys();
+      await Promise.all(keys.filter((k) => k.startsWith('cue-app-')).map((k) => caches.delete(k)));
+      await (await navigator.serviceWorker?.getRegistration())?.update();
+    } catch { /* egal */ }
+    location.reload();
+  }
+
   async dialogEinstellungen() {
     if (!this.stueck) return;
     const dlg = $('#dlgEinstellungen');
@@ -370,24 +487,11 @@ class App {
       sel.innerHTML = '<option value="">Standard (Systemeinstellung)</option>' +
         liste.filter((g) => g.id !== 'default').map((g) => `<option value="${g.id}">${g.name}${g.standard ? ' (Standard)' : ''}</option>`).join('');
       sel.value = lokal(m === 'server' ? 'cue.geraet' : 'cue.mikro') || '';
-      if (m === 'vosk') {
-        $('#modellStatus').textContent = (await modellImCache(lokal('cue.modellUrl') || MODELL_URL))
-          ? '✓ Sprachmodell ist auf diesem Gerät gespeichert (offline nutzbar).'
-          : 'Sprachmodell noch nicht geladen.';
-      }
+      if (m === 'vosk') await this.modellStatusZeigen();
     };
     motorSel.onchange = motorAnzeigen;
-    $('#btnModellLaden').onclick = async () => {
-      const knopf = $('#btnModellLaden');
-      knopf.disabled = true;
-      try {
-        await this.verbindung.modellVorladen((p) => { $('#modellStatus').textContent = `Lade … ${p ?? ''}${p != null ? ' %' : ''}`; });
-        $('#modellStatus').textContent = '✓ Sprachmodell ist auf diesem Gerät gespeichert (offline nutzbar).';
-      } catch (e) {
-        $('#modellStatus').textContent = `Fehler: ${e.message}`;
-      }
-      knopf.disabled = false;
-    };
+    $('#modellUrl').value = lokal('cue.modellUrl') || '';
+    $('#appVersion').textContent = `Version ${APP_VERSION}`;
     await motorAnzeigen();
     // Speicherort
     const dauerhaft = await speicherDauerhaft();
