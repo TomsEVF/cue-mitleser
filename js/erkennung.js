@@ -32,9 +32,17 @@ async function laufenLassen(c) {
   return c.state === 'running';
 }
 
-// Jede Berührung/Taste entsperrt einen angehaltenen Audio-Kontext
+// Jede Berührung/Taste entsperrt angehaltene Audio-Kontexte (Töne und Erkennung)
+const kontexte = new Set();
+export function kontextMerken(c) { kontexte.add(c); }
 for (const art of ['pointerdown', 'touchend', 'keydown']) {
-  document.addEventListener(art, () => { if (ctx && ctx.state !== 'running') ctx.resume().catch(() => {}); }, { capture: true, passive: true });
+  document.addEventListener(art, () => {
+    if (ctx && ctx.state !== 'running') ctx.resume().catch(() => {});
+    for (const c of kontexte) {
+      if (c.state === 'closed') kontexte.delete(c);
+      else if (c.state !== 'running') c.resume().catch(() => {});
+    }
+  }, { capture: true, passive: true });
 }
 
 let skripte = {};
@@ -81,8 +89,35 @@ export async function modellLaden(url, fortschritt) {
 }
 
 // ---------------------------------------------------------------- Motor: Vosk im Browser
+// Startet das Sprachmodell. vosk-browser selbst wartet bei Fehlern endlos – hier gibt es Fehler + Zeitlimit.
+// Ein Merker in localStorage erkennt, wenn die Seite beim Laden abstürzt (zu wenig Arbeitsspeicher, v. a. iPad).
+export async function voskModellStarten(url, fortschritt, info) {
+  await skriptLaden('vendor/vosk.js');
+  const blob = await modellLaden(url, fortschritt);
+  info?.('Sprachmodell wird gestartet …');
+  const blobUrl = URL.createObjectURL(blob);
+  lokal('cue.modellStart', String(Date.now()));
+  try {
+    return await new Promise((ok, fehler) => {
+      const m = new window.Vosk.Model(blobUrl, -1);
+      const t = setTimeout(() => fehler(new Error('Sprachmodell startet nicht (Zeitüberschreitung, evtl. zu wenig Arbeitsspeicher)')), 120000);
+      m.on('load', (msg) => { clearTimeout(t); if (msg.result) ok(m); else fehler(new Error('Sprachmodell konnte nicht geladen werden')); });
+      m.on('error', (msg) => { clearTimeout(t); fehler(new Error(`Sprachmodell: ${msg.error || 'unbekannter Fehler'}`)); });
+    });
+  } finally {
+    lokal('cue.modellStart', null);
+  }
+}
+
+// Wurde die Seite zuletzt während des Modellstarts beendet? (→ vermutlich Absturz)
+export function modellAbsturzVermutet() {
+  const t = Number(lokal('cue.modellStart') || 0);
+  lokal('cue.modellStart', null);
+  return t > 0 && Date.now() - t < 10 * 60 * 1000;
+}
+
 class VoskMotor {
-  constructor(e) { this.e = e; this.modell = null; this.modellBlobUrl = null; this.laeuft = false; }
+  constructor(e) { this.e = e; this.modell = null; this.laeuft = false; }
   get name() { return 'Vosk im Browser (offline)'; }
   verfuegbar() {
     if (!window.isSecureContext) return 'Nur über https oder localhost möglich';
@@ -94,12 +129,9 @@ class VoskMotor {
 
   async modellBereit() {
     if (this.modell) return this.modell;
-    await skriptLaden('vendor/vosk.js');
-    const url = lokal('cue.modellUrl') || MODELL_URL;
-    const blob = await modellLaden(url, (p) => this.e.emit('info', { text: `Lade Sprachmodell … ${p ?? ''}${p != null ? ' %' : ''}` }));
-    this.e.emit('info', { text: 'Sprachmodell wird gestartet …' });
-    this.modellBlobUrl = URL.createObjectURL(blob);
-    this.modell = await window.Vosk.createModel(this.modellBlobUrl, -1);
+    this.modell = await voskModellStarten(lokal('cue.modellUrl') || MODELL_URL,
+      (p) => this.e.emit('info', { text: `Lade Sprachmodell … ${p ?? ''}${p != null ? ' %' : ''}` }),
+      (t) => this.e.emit('info', { text: t }));
     return this.modell;
   }
 
@@ -107,7 +139,6 @@ class VoskMotor {
     this.stopp();
     const nr = (this.startNr = (this.startNr || 0) + 1);
     try {
-      const c = audioKontext();
       const mikro = lokal('cue.mikro');
       this.stream = await navigator.mediaDevices.getUserMedia({
         video: false,
@@ -116,9 +147,24 @@ class VoskMotor {
           channelCount: 1, echoCancellation: false, noiseSuppression: true, autoGainControl: true,
         },
       });
+      const spur = this.stream.getAudioTracks()[0];
+      spur.onended = () => {
+        if (nr !== this.startNr) return;
+        this.e.emit('info', { text: 'Mikrofon wurde unterbrochen – starte neu …' });
+        setTimeout(() => { if (nr === this.startNr && this.e.gewuenscht) this.start(...this.e.gewuenscht); }, 800);
+      };
       const modell = await this.modellBereit();
       if (nr !== this.startNr) { this.streamStoppen(); return; }   // inzwischen gestoppt
+
+      // Eigener Audio-Kontext, erst NACH dem Mikrofon angelegt: Auf iPad/iPhone stellt Safari die
+      // Audio-Sitzung beim Mikrofonstart um; ein vorher erzeugter Kontext bleibt dann oft stumm.
+      const AC = window.AudioContext || window.webkitAudioContext;
+      const c = new AC();
+      this.ctx = c;
+      kontextMerken(c);
+      c.onstatechange = () => { if (this.ctx === c && c.state !== 'running' && c.state !== 'closed') c.resume().catch(() => {}); };
       if (!(await laufenLassen(c))) this.e.emit('info', { text: 'Bitte einmal auf den Bildschirm tippen, damit das Mikrofon startet.' });
+
       const grammatik = vokabular ? JSON.stringify([...vokabular, '[unk]']) : undefined;
       const rec = grammatik ? new modell.KaldiRecognizer(c.sampleRate, grammatik) : new modell.KaldiRecognizer(c.sampleRate);
       rec.setWords(true);
@@ -137,7 +183,9 @@ class VoskMotor {
       this.rec = rec;
       this.quelle = c.createMediaStreamSource(this.stream);
       this.knoten = c.createScriptProcessor(4096, 1, 1);
+      this.letzterBlock = 0;
       this.knoten.onaudioprocess = (ev) => {
+        this.letzterBlock = Date.now();
         const d = ev.inputBuffer.getChannelData(0);
         let s = 0;
         for (let i = 0; i < d.length; i += 4) s += d[i] * d[i];
@@ -148,21 +196,38 @@ class VoskMotor {
       this.knoten.connect(c.destination);
       this.laeuft = true;
       this.e.statusMelden();
+
+      // Wächter: kommt kein Ton an, Kontext wieder anwerfen und Bescheid geben
+      const start = Date.now();
+      let gemeldet = false;
+      clearInterval(this.waechter);
+      this.waechter = setInterval(() => {
+        if (nr !== this.startNr) { clearInterval(this.waechter); return; }
+        const seit = Date.now() - (this.letzterBlock || start);
+        if (seit > 3000) {
+          c.resume().catch(() => {});
+          if (!gemeldet) { gemeldet = true; this.e.emit('info', { text: `Kein Ton vom Mikrofon (Audio: ${c.state}) – bitte einmal auf den Bildschirm tippen.` }); }
+        } else gemeldet = false;
+      }, 2000);
     } catch (err) {
       this.stopp();
-      this.e.statusMelden(err.name === 'NotAllowedError' ? 'Mikrofon nicht erlaubt – in den Einstellungen des Browsers freigeben' : `Erkennung: ${err.message}`);
+      this.e.statusMelden(err.name === 'NotAllowedError'
+        ? 'Mikrofon nicht erlaubt – iPad: Einstellungen → Safari → Mikrofon → Erlauben'
+        : `Erkennung: ${err.message}`);
     }
   }
 
-  streamStoppen() { this.stream?.getTracks().forEach((t) => t.stop()); this.stream = null; }
+  streamStoppen() { this.stream?.getTracks().forEach((t) => { t.onended = null; t.stop(); }); this.stream = null; }
 
   stopp() {
     this.startNr = (this.startNr || 0) + 1;
+    clearInterval(this.waechter);
     try { this.knoten?.disconnect(); this.quelle?.disconnect(); } catch { /* egal */ }
     if (this.knoten) this.knoten.onaudioprocess = null;
     try { this.rec?.remove(); } catch { /* egal */ }
     this.knoten = this.quelle = this.rec = null;
     this.streamStoppen();
+    if (this.ctx) { const c = this.ctx; this.ctx = null; c.onstatechange = null; c.close().catch(() => {}); }
     if (this.laeuft) { this.laeuft = false; this.e.statusMelden(); }
   }
 }
@@ -214,6 +279,13 @@ class SprachMotor {
         this.e.statusMelden('Spracherkennung nicht erlaubt (Mikrofon/Siri in den Einstellungen freigeben)');
       } else if (ev.error === 'network') {
         this.e.emit('info', { text: 'Eingebaute Erkennung braucht Internet – Verbindung prüfen' });
+      } else if (ev.error === 'audio-capture') {
+        this.e.statusMelden('Kein Mikrofon verfügbar (anderes Programm nutzt es?)');
+      } else if (ev.error === 'language-not-supported') {
+        this.aktiv = false;
+        this.e.statusMelden('Deutsch wird von der eingebauten Erkennung nicht unterstützt (Diktat/Siri-Sprache prüfen)');
+      } else if (ev.error !== 'no-speech' && ev.error !== 'aborted') {
+        this.e.emit('info', { text: `Eingebaute Erkennung: ${ev.error}` });
       }
     };
     r.onend = () => {

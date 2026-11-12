@@ -392,3 +392,14 @@ body.cue-edit .prompter .w[data-w]:not(.regie) { cursor: pointer; border-radius:
 body.cue-edit .prompter .w[data-w]:not(.regie):hover { background: #ffffff1c; }
 body.cue-edit .prompter .cue-chip { cursor: pointer; outline: 1px dashed #fff8; opacity: 1; }
 body.cue-edit .prompter .pz { cursor: default; }
+
+/* ---------- Diagnose */
+.diag-pegel { height: 14px; background: #1d1d1d; border-radius: 7px; overflow: hidden; }
+.diag-pegel div { height: 100%; width: 0; background: linear-gradient(90deg, #2e8b57 0 65%, #d4b106 65% 88%, #d9443b 88%); transition: width .1s; }
+.diag-erkannt { min-height: 26px; font-size: 18px; color: #fff; }
+.diag-ergebnis:empty { display: none; }
+.diag-ergebnis { padding: 10px 12px; border-radius: 6px; font-weight: 600; }
+.diag-ergebnis.gut { background: #1d3b26; color: #d6f5df; }
+.diag-ergebnis.schlecht { background: #4a1d1b; color: #ffd9d6; }
+#dlgDiagnose .bericht { max-height: 30vh; font-size: 12px; }
+button.asr { background: none; border: 0; padding: 4px 6px; color: inherit; font-size: 13px; min-height: 0; cursor: pointer; }

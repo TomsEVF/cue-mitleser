@@ -4,6 +4,8 @@ import { Editor } from './editor.js';
 import { Laufzeit } from './show.js';
 import { Erkennung, entsperren, modellImCache, MODELL_URL } from './erkennung.js';
 import { dateiLesen } from './datei-import.js';
+import { Diagnose } from './diagnose.js';
+import { modellAbsturzVermutet } from './erkennung.js';
 import { BEISPIEL } from './beispiel.js';
 import { api, toast, lokal, speicherStart, speicherModus, speicherDauerhaft, browserGeraete } from './hilfen.js';
 
@@ -21,6 +23,7 @@ class App {
     this.verbindung = new Erkennung();
     this.editor = new Editor(this);
     this.laufzeit = new Laufzeit(this);
+    this.diagnose = new Diagnose(this);
     this.bindeKopf();
     this.bindeDialoge();
     this.verbindung.on('status', (s) => this.zeigeAsrStatus(s));
@@ -35,6 +38,11 @@ class App {
     const modus = await speicherStart();
     document.body.dataset.speicher = modus;
     this.verbindung.init(modus === 'server');
+    if (modellAbsturzVermutet()) {
+      setTimeout(() => alert('Beim letzten Start des Sprachmodells wurde die Seite beendet – vermutlich reicht der Arbeitsspeicher '
+        + 'dieses Geräts für „Vosk im Browser“ nicht.\n\nBitte unter ⋯ → Einstellungen die „Eingebaute Erkennung (Apple)“ wählen '
+        + 'oder den Mac-Server verwenden. Mit „Mikrofon & Erkennung testen“ lässt sich das prüfen.'), 500);
+    }
     this.serviceWorker(modus);
     await this.listeAktualisieren();
     const letztes = lokal('cue.letztes');
@@ -205,6 +213,13 @@ class App {
   // ---------------------------------------------------------------- Kopfleiste
   bindeKopf() {
     $('#stueckListe').addEventListener('change', (e) => this.oeffnen(e.target.value));
+    $('#asrStatus').addEventListener('click', () => this.diagnose.oeffnen());
+    $('#btnDiagnose').addEventListener('click', () => {
+      const motorSel = $('#einstMotor');
+      if (motorSel.value !== this.verbindung.motorId) this.verbindung.waehle(motorSel.value);
+      $('#dlgEinstellungen').close('abbrechen');
+      this.diagnose.oeffnen();
+    });
     $('#btnNeu').addEventListener('click', () => this.dialogNeu());
     $('#btnLeerNeu').addEventListener('click', () => this.dialogNeu());
     $('#btnLeerBeispiel').addEventListener('click', async () => {
