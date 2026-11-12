@@ -269,6 +269,39 @@ export class Editor {
     f.elements[c ? 'bezeichnung' : 'nummer'].select();
   }
 
+  // Wort angetippt (im Skript oder im Prompter der Probe): Endwort setzen, Cue verschieben oder neuen Cue anlegen
+  wortAntippen(el, zi, wort) {
+    const zeile = this.st.zeilen[zi]?.id;
+    if (!zeile) return;
+    const text = el.textContent;
+    if (this.endwortFuer) {
+      const id = this.endwortFuer;
+      this.verschiebenEnde();
+      this.app.aendern((st) => { const x = st.cues.find((y) => y.id === id); x.dauer = { ...(x.dauer || {}), art: 'wort', zeile, wort }; });
+      this.waehle(id, { scrollListe: true });
+      toast(`Endet jetzt bei „${text}“.`);
+      return;
+    }
+    if (this.verschieben) {
+      const id = this.verschieben;
+      this.verschiebenEnde();
+      this.app.aendern((st) => { const x = st.cues.find((y) => y.id === id); x.zeile = zeile; x.wort = wort; });
+      this.waehle(id, { scrollListe: true });
+      toast(`Verschoben auf „${text}“.`);
+      return;
+    }
+    this.waehle(null);
+    this.formularOeffnen(el, { neu: true, zeile, wort });
+  }
+
+  // Cue-Marke angetippt (Ende-Marken öffnen den zugehörigen Cue)
+  markeAntippen(el, id) {
+    const c = this.st.cues.find((x) => x.id === String(id).replace(/#ende$/, ''));
+    if (!c) return;
+    this.waehle(c.id, { scrollListe: true });
+    this.formularOeffnen(el, { cueId: c.id, zeile: c.zeile, wort: c.wort });
+  }
+
   verschiebenEnde() {
     this.verschieben = null;
     this.endwortFuer = null;
@@ -496,40 +529,13 @@ export class Editor {
       const mark = e.target.closest('.mark');
       if (mark) {
         e.stopPropagation();
-        const c = this.st.cues.find((x) => x.id === mark.dataset.cue.replace(/#ende$/, ''));
-        this.waehle(c.id, { scrollListe: true });
-        this.formularOeffnen(mark, { cueId: c.id, zeile: c.zeile, wort: c.wort });
+        this.markeAntippen(mark, mark.dataset.cue);
         return;
       }
       const btn = e.target.closest('.zeile-werkzeug button');
       if (btn) { this.zeileAktion(btn.dataset.aktion, Number(btn.closest('.zeile').dataset.z)); return; }
       const w = e.target.closest('.w');
-      if (w && this.endwortFuer) {
-        const id = this.endwortFuer;
-        this.verschiebenEnde();
-        const zeile = this.st.zeilen[Number(w.dataset.z)].id;
-        const wort = Number(w.dataset.w);
-        this.app.aendern((st) => { const x = st.cues.find((y) => y.id === id); x.dauer = { ...(x.dauer || {}), art: 'wort', zeile, wort }; });
-        this.waehle(id, { scrollListe: true });
-        toast(`Endet jetzt bei „${w.textContent}“.`);
-        return;
-      }
-      if (w && this.verschieben) {
-        const id = this.verschieben;
-        this.verschiebenEnde();
-        const zeile = this.st.zeilen[Number(w.dataset.z)].id;
-        const wort = Number(w.dataset.w);
-        this.app.aendern((st) => { const x = st.cues.find((y) => y.id === id); x.zeile = zeile; x.wort = wort; });
-        this.waehle(id, { scrollListe: true });
-        toast(`Verschoben auf „${w.textContent}“.`);
-        return;
-      }
-      if (w) {
-        const zi = Number(w.dataset.z);
-        this.waehle(null);
-        this.formularOeffnen(w, { neu: true, zeile: this.st.zeilen[zi].id, wort: Number(w.dataset.w) });
-        return;
-      }
+      if (w) { this.wortAntippen(w, Number(w.dataset.z), Number(w.dataset.w)); return; }
       this.formularSchliessen();
       this.waehle(null);
     });
@@ -620,6 +626,7 @@ export class Editor {
       if (!id) return;
       this.endwortFuer = id;
       document.body.classList.add('verschiebe-modus');
+      if (this.app.modus === 'probe') this.app.laufzeit.cueBearbeiten(true);
       toast('Jetzt auf das Wort tippen, bei dem der Cue endet (Esc bricht ab).', 4000);
     });
     $('#cueVerschieben').addEventListener('click', () => {
@@ -627,6 +634,7 @@ export class Editor {
       this.verschieben = this.form.cueId;
       this.formularSchliessen();
       document.body.classList.add('verschiebe-modus');
+      if (this.app.modus === 'probe') this.app.laufzeit.cueBearbeiten(true);
       toast('Jetzt auf das neue Stichwort tippen (Esc bricht ab).', 4000);
     });
     $('#cueLoeschen').addEventListener('click', () => this.form?.cueId && this.cueLoeschen(this.form.cueId));

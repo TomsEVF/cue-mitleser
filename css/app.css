@@ -380,3 +380,15 @@ button, .w, .mark, .pz { touch-action: manipulation; -webkit-tap-highlight-color
 .ab-hier { flex: none; display: flex; gap: 10px; align-items: center; padding: 8px 18px; background: #0d1a2b; border-top: 1px solid #23476f; color: #cfe3ff; }
 .ab-hier span { flex: 1; font-size: 15px; }
 .ab-hier button { min-height: 40px; }
+
+/* ---------- Cues in der Probe bearbeiten */
+body:not([data-modus="probe"]) .nur-probe { display: none; }
+.karte-knoepfe { grid-column: 1 / -1; display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+.karte-knoepfe button { font-size: 13px; padding: 4px 10px; min-height: 34px; background: #000a; border-color: #ffffff30; color: #fff; }
+.cue-karte.go .karte-knoepfe button { color: #000 !important; background: #fff9; border-color: #0003; }
+.cue-karte.klein .karte-knoepfe button { min-height: 30px; padding: 2px 8px; }
+.ab-hier.bearbeiten { background: #2a1d05; border-color: #6b4d12; color: #ffe2a8; }
+body.cue-edit .prompter .w[data-w]:not(.regie) { cursor: pointer; border-radius: 4px; }
+body.cue-edit .prompter .w[data-w]:not(.regie):hover { background: #ffffff1c; }
+body.cue-edit .prompter .cue-chip { cursor: pointer; outline: 1px dashed #fff8; opacity: 1; }
+body.cue-edit .prompter .pz { cursor: default; }
