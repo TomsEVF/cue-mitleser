@@ -250,12 +250,27 @@
       <h3>Spracherkennung</h3>
       <label>Erkennung<select id="einstMotor"></select></label>
       <p class="hinweis" id="einstMotorHinweis"></p>
-      <div class="modell-zeile" id="modellZeile"><span id="modellStatus" class="hinweis"></span><button type="button" id="btnModellLaden">Sprachmodell jetzt laden</button></div>
+      <div class="modell-bereich" id="modellZeile">
+        <div><b>Sprachmodell</b> <span id="modellStatus" class="hinweis"></span></div>
+        <div class="diag-pegel" id="modellFortschrittRahmen" hidden><div id="modellFortschritt"></div></div>
+        <div class="modell-knoepfe">
+          <button type="button" id="btnModellLaden">Laden</button>
+          <button type="button" id="btnModellNeu" title="Gespeichertes Modell verwerfen und frisch herunterladen">Neu laden</button>
+          <button type="button" id="btnModellTesten" title="Modell starten und prüfen, ob es funktioniert">Starten (Test)</button>
+          <button type="button" id="btnModellDatei" title=".tar.gz oder .zip von alphacephei.com, z. B. per AirDrop">Aus Datei …</button>
+          <button type="button" id="btnModellLoeschen" class="gefahr">Löschen</button>
+        </div>
+        <label>Adresse des Modells (nur ändern, wenn nötig)<input id="modellUrl" placeholder="models/vosk-model-small-de-0.15.tar.gz" autocomplete="off"></label>
+        <input type="file" id="modellDatei" accept=".gz,.tgz,.zip,application/gzip,application/zip,application/x-gzip" hidden>
+      </div>
       <label id="einstGeraetFeld">Mikrofon<select id="einstGeraet"></select></label>
       <button type="button" id="btnDiagnose">🎤 Mikrofon &amp; Erkennung testen …</button>
       <label class="schalter" id="einstVokabular"><input type="checkbox" name="vokabularBeschraenken"> Erkennung auf Wörter des Skripts beschränken (oft genauer mit kleinem Modell – in der Probe testen)</label>
       <h3>Speicher</h3>
       <p class="hinweis" id="speicherInfo"></p>
+      <h3>App</h3>
+      <div class="modell-knoepfe"><span class="hinweis" id="appVersion"></span><span class="platz"></span>
+        <button type="button" id="btnAppAktualisieren" title="Neueste Version laden (Stücke und Sprachmodell bleiben erhalten)">App aktualisieren</button></div>
       <h3>Ansagen</h3>
       <div class="raster2">
         <label>Standard-Vorlauf neuer Cues (Wörter)<input type="number" name="vorlauf" min="0"></label>

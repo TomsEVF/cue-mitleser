@@ -57,35 +57,143 @@ export function skriptLaden(src) {
 }
 
 // ---------------------------------------------------------------- Sprachmodell (mit Offline-Cache)
-export async function modellImCache(url = MODELL_URL) {
-  try { return !!(await (await caches.open(MODELL_CACHE)).match(url)); } catch { return false; }
+const MB = (b) => `${((b || 0) / 1048576).toFixed(1).replace('.', ',')} MB`;
+
+async function istGzip(blob) {
+  const b = new Uint8Array(await blob.slice(0, 2).arrayBuffer());
+  return b[0] === 0x1f && b[1] === 0x8b;
 }
 
-export async function modellLaden(url, fortschritt) {
-  let antwort = null;
-  try { antwort = await (await caches.open(MODELL_CACHE)).match(url); } catch { /* kein Cache */ }
-  if (!antwort) {
-    const r = await fetch(url);
-    if (!r.ok) throw new Error(`Sprachmodell nicht gefunden (${r.status}): ${url}`);
-    const gesamt = Number(r.headers.get('content-length')) || 0;
-    const leser = r.body.getReader();
-    const teile = [];
-    let geladen = 0, zuletzt = 0;
-    for (;;) {
-      const { done, value } = await leser.read();
-      if (done) break;
-      teile.push(value);
-      geladen += value.length;
-      if (fortschritt && Date.now() - zuletzt > 400) {
-        zuletzt = Date.now();
-        fortschritt(gesamt ? Math.round((100 * geladen) / gesamt) : null, geladen);
-      }
-    }
-    const blob = new Blob(teile, { type: 'application/gzip' });
-    try { await (await caches.open(MODELL_CACHE)).put(url, new Response(blob)); } catch { /* Speicher voll */ }
-    return blob;
+async function modellPruefen(blob) {
+  if (blob.size < 5 * 1048576) throw new Error(`Modelldatei zu klein (${MB(blob.size)}) – Download unvollständig?`);
+  if (!(await istGzip(blob))) throw new Error('Modelldatei ist kein .tar.gz-Archiv (beschädigt oder falsche Datei)');
+}
+
+async function modellSpeichern(url, blob, quelle) {
+  const cache = await caches.open(MODELL_CACHE);
+  await cache.put(url, new Response(blob, { headers: { 'content-type': 'application/gzip', 'x-quelle': quelle, 'x-zeit': String(Date.now()) } }));
+}
+
+export async function modellImCache(url = MODELL_URL) {
+  const i = await modellInfo(url);
+  return i.gespeichert && i.ok;
+}
+
+// Was liegt im Speicher? {gespeichert, ok, groesse, quelle, zeit}
+export async function modellInfo(url = MODELL_URL) {
+  try {
+    const r = await (await caches.open(MODELL_CACHE)).match(url);
+    if (!r) return { gespeichert: false };
+    const blob = await r.blob();
+    let ok = true;
+    try { await modellPruefen(blob); } catch { ok = false; }
+    return { gespeichert: true, ok, groesse: blob.size, quelle: r.headers.get('x-quelle') || 'Download', zeit: Number(r.headers.get('x-zeit')) || 0 };
+  } catch (e) {
+    return { gespeichert: false, fehler: e.message };
   }
-  return antwort.blob();
+}
+
+export async function modellLoeschen(url = MODELL_URL) {
+  try { await (await caches.open(MODELL_CACHE)).delete(url); } catch { /* egal */ }
+}
+
+// Lädt das Modell aus dem Netz – nur vollständige, gültige Downloads werden gespeichert
+export async function modellHerunterladen(url, fortschritt) {
+  const r = await fetch(url, { cache: 'no-store' });
+  if (!r.ok) throw new Error(`Sprachmodell nicht gefunden (HTTP ${r.status}): ${url}`);
+  const gesamt = Number(r.headers.get('content-length')) || 0;
+  const leser = r.body.getReader();
+  const teile = [];
+  let geladen = 0, zuletzt = 0;
+  for (;;) {
+    const { done, value } = await leser.read();
+    if (done) break;
+    teile.push(value);
+    geladen += value.length;
+    if (fortschritt && Date.now() - zuletzt > 300) {
+      zuletzt = Date.now();
+      fortschritt(gesamt ? Math.round((100 * geladen) / gesamt) : null, geladen, gesamt);
+    }
+  }
+  if (gesamt && geladen !== gesamt) throw new Error(`Download unvollständig (${MB(geladen)} von ${MB(gesamt)}) – bitte erneut versuchen`);
+  const blob = new Blob(teile, { type: 'application/gzip' });
+  await modellPruefen(blob);
+  try { await modellSpeichern(url, blob, 'Download'); }
+  catch { throw new Error('Modell geladen, aber nicht genug Speicherplatz zum Speichern auf dem Gerät'); }
+  fortschritt?.(100, geladen, gesamt);
+  return blob;
+}
+
+// Aus dem Speicher, sonst aus dem Netz. Beschädigte gespeicherte Dateien werden verworfen.
+export async function modellLaden(url, fortschritt) {
+  try {
+    const r = await (await caches.open(MODELL_CACHE)).match(url);
+    if (r) {
+      const blob = await r.blob();
+      try { await modellPruefen(blob); return blob; } catch { await modellLoeschen(url); }
+    }
+  } catch { /* kein Cache */ }
+  return modellHerunterladen(url, fortschritt);
+}
+
+// Modell aus einer Datei übernehmen: .tar.gz direkt, .zip (Original von alphacephei.com) wird umgewandelt
+export async function modellAusDatei(datei, url, info) {
+  let blob;
+  if (/\.zip$/i.test(datei.name)) {
+    info?.('Entpacke ZIP …');
+    blob = await zipZuTarGz(datei, info);
+  } else {
+    blob = new Blob([await datei.arrayBuffer()], { type: 'application/gzip' });
+  }
+  await modellPruefen(blob);
+  await modellSpeichern(url, blob, `Datei ${datei.name}`);
+  return blob;
+}
+
+// ZIP → tar.gz mit Ordner „model/“ (so erwartet es vosk-browser)
+async function zipZuTarGz(datei, info) {
+  await skriptLaden('vendor/jszip.min.js');
+  if (typeof CompressionStream === 'undefined') throw new Error('Dieser Browser kann ZIP nicht umwandeln – bitte die .tar.gz-Datei verwenden');
+  const zip = await window.JSZip.loadAsync(await datei.arrayBuffer());
+  const dateien = Object.values(zip.files).filter((f) => !f.dir && !f.name.includes('__MACOSX') && !/(^|\/)\._/.test(f.name));
+  if (!dateien.some((f) => /(^|\/)am\/final\.mdl$/.test(f.name))) throw new Error('Im ZIP ist kein Vosk-Modell (am/final.mdl fehlt)');
+  const wurzel = dateien.find((f) => /(^|\/)am\/final\.mdl$/.test(f.name)).name.replace(/am\/final\.mdl$/, '');
+  const enc = new TextEncoder();
+  const teile = [];
+  const kopfVon = (name, groesse, ordner) => {
+    if (enc.encode(name).length > 99) throw new Error(`Dateiname zu lang für tar: ${name}`);
+    const kopf = new Uint8Array(512);
+    const feld = (text, pos, len) => kopf.set(enc.encode(text).slice(0, len), pos);
+    feld(name, 0, 100);
+    feld(ordner ? '0000755\0' : '0000644\0', 100, 8); feld('0000000\0', 108, 8); feld('0000000\0', 116, 8);
+    feld(`${groesse.toString(8).padStart(11, '0')}\0`, 124, 12);
+    feld(`${Math.floor(Date.now() / 1000).toString(8).padStart(11, '0')}\0`, 136, 12);
+    feld('        ', 148, 8); feld(ordner ? '5' : '0', 156, 1); feld('ustar\0', 257, 6); feld('00', 263, 2);
+    const summe = kopf.reduce((a, b) => a + b, 0);
+    feld(`${summe.toString(8).padStart(6, '0')}\0 `, 148, 8);
+    return kopf;
+  };
+  // Ordner-Einträge zuerst – vosk-browser legt Ordner nur an, wenn sie im Archiv stehen
+  const ordner = new Set(['model/']);
+  for (const f of dateien) {
+    if (!f.name.startsWith(wurzel)) continue;
+    const teileName = `model/${f.name.slice(wurzel.length)}`.split('/').slice(0, -1);
+    for (let i = 1; i <= teileName.length; i++) ordner.add(`${teileName.slice(0, i).join('/')}/`);
+  }
+  for (const o of [...ordner].sort()) teile.push(kopfVon(o, 0, true));
+  let n = 0;
+  for (const f of dateien) {
+    if (!f.name.startsWith(wurzel)) continue;
+    const daten = await f.async('uint8array');
+    teile.push(kopfVon(`model/${f.name.slice(wurzel.length)}`, daten.length, false), daten);
+    const rest = (512 - (daten.length % 512)) % 512;
+    if (rest) teile.push(new Uint8Array(rest));
+    if (++n % 5 === 0) info?.(`Wandle um … ${n}/${dateien.length} Dateien`);
+  }
+  teile.push(new Uint8Array(1024));
+  info?.('Komprimiere …');
+  const gz = new Blob(teile).stream().pipeThrough(new CompressionStream('gzip'));
+  return new Blob([await new Response(gz).arrayBuffer()], { type: 'application/gzip' });
 }
 
 // ---------------------------------------------------------------- Motor: Vosk im Browser
@@ -101,8 +209,13 @@ export async function voskModellStarten(url, fortschritt, info) {
     return await new Promise((ok, fehler) => {
       const m = new window.Vosk.Model(blobUrl, -1);
       const t = setTimeout(() => fehler(new Error('Sprachmodell startet nicht (Zeitüberschreitung, evtl. zu wenig Arbeitsspeicher)')), 120000);
-      m.on('load', (msg) => { clearTimeout(t); if (msg.result) ok(m); else fehler(new Error('Sprachmodell konnte nicht geladen werden')); });
-      m.on('error', (msg) => { clearTimeout(t); fehler(new Error(`Sprachmodell: ${msg.error || 'unbekannter Fehler'}`)); });
+      // Modell lässt sich nicht öffnen → gespeicherte Datei ist vermutlich beschädigt: verwerfen, nächster Versuch lädt neu
+      m.on('load', (msg) => {
+        clearTimeout(t);
+        if (msg.result) ok(m);
+        else { m.terminate?.(); modellLoeschen(url); fehler(new Error('Sprachmodell konnte nicht geöffnet werden – gespeicherte Datei verworfen, bitte neu laden')); }
+      });
+      m.on('error', (msg) => { clearTimeout(t); m.terminate?.(); modellLoeschen(url); fehler(new Error(`Sprachmodell: ${msg.error || 'unbekannter Fehler'} – gespeicherte Datei verworfen, bitte neu laden`)); });
     });
   } finally {
     lokal('cue.modellStart', null);
@@ -390,5 +503,15 @@ export class Erkennung {
   // Für die Vorbereitung: Modell vorab laden, damit es in der Vorstellung offline da ist
   async modellVorladen(fortschritt) {
     await modellLaden(lokal('cue.modellUrl') || MODELL_URL, fortschritt);
+  }
+
+  // Gestartetes Modell aus dem Arbeitsspeicher nehmen (z. B. vor „Neu laden“)
+  modellEntladen() {
+    const m = this.motoren.vosk;
+    const lief = m.laeuft;
+    if (lief) m.stopp();
+    try { m.modell?.terminate?.(); } catch { /* egal */ }
+    m.modell = null;
+    return lief;
   }
 }
