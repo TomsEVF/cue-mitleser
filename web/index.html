@@ -38,7 +38,7 @@
     </nav>
     <div class="kopf-status">
       <span id="speicherStatus" class="speicher"></span>
-      <span id="asrStatus" class="asr" title="Spracherkennung"></span>
+      <button id="asrStatus" class="asr" type="button" title="Antippen: Mikrofon &amp; Erkennung testen"></button>
       <button id="btnVollbild" title="Vollbild">⛶</button>
     </div>
   </header>
@@ -206,6 +206,24 @@
     </form>
   </dialog>
 
+  <dialog id="dlgDiagnose">
+    <form method="dialog" class="dialog">
+      <h2>Mikrofon &amp; Erkennung testen</h2>
+      <p class="hinweis">Prüft auf diesem Gerät Schritt für Schritt Mikrofon, Ton, Sprachmodell und Erkennung.
+        Nach dem Start bitte normal sprechen. Läuft gerade Probe/Show, wird das Mikrofon kurz übernommen.</p>
+      <div class="diag-pegel"><div id="diagPegel"></div></div>
+      <div id="diagErkannt" class="diag-erkannt"></div>
+      <div id="diagErgebnis" class="diag-ergebnis"></div>
+      <pre id="diagLog" class="bericht"></pre>
+      <div class="form-knoepfe">
+        <button type="button" id="diagStart" class="primaer">Test starten</button>
+        <button type="button" id="diagKopieren">Bericht kopieren</button>
+        <span class="platz"></span>
+        <button value="ok">Schließen</button>
+      </div>
+    </form>
+  </dialog>
+
   <dialog id="dlgBericht">
     <form method="dialog" class="dialog">
       <h2>Import abgeschlossen</h2>
@@ -234,6 +252,7 @@
       <p class="hinweis" id="einstMotorHinweis"></p>
       <div class="modell-zeile" id="modellZeile"><span id="modellStatus" class="hinweis"></span><button type="button" id="btnModellLaden">Sprachmodell jetzt laden</button></div>
       <label id="einstGeraetFeld">Mikrofon<select id="einstGeraet"></select></label>
+      <button type="button" id="btnDiagnose">🎤 Mikrofon &amp; Erkennung testen …</button>
       <label class="schalter" id="einstVokabular"><input type="checkbox" name="vokabularBeschraenken"> Erkennung auf Wörter des Skripts beschränken (oft genauer mit kleinem Modell – in der Probe testen)</label>
       <h3>Speicher</h3>
       <p class="hinweis" id="speicherInfo"></p>
