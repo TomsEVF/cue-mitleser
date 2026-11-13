@@ -1,6 +1,7 @@
 // Bearbeiten-Modus: Skriptansicht mit Cue-Marken, Cue-Formular, Cue-Liste, Zeilen bearbeiten, Proben-Auswertung.
 import * as S from './skript.js';
 import { api, toast, lokal } from './hilfen.js';
+import { zeitplanImSkript } from './zeitplan.js';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -91,7 +92,8 @@ export class Editor {
       for (let i = Math.min(von, bis); i <= Math.max(von, bis); i++) if (!bereich.has(i)) bereich.set(i, c.typ);
     }
 
-    const teile = [];
+    const zeitplan = zeitplanImSkript(this.st, this.ix);
+    const teile = [zeitplan.vorne];
     if (!this.st.zeilen.length) {
       teile.push('<p class="hinweis" style="padding:20px">Noch kein Skript. Über „Skript importieren“ Text einfügen oder eine Datei laden.</p>');
     }
@@ -125,9 +127,11 @@ export class Editor {
           <button data-aktion="bearbeiten" title="Zeile bearbeiten">✎</button>
           <button data-aktion="streichen" title="${z.gestrichen ? 'Strich aufheben' : 'Zeile streichen'}">${z.gestrichen ? '↺' : '✂'}</button>
           <button data-aktion="einfuegen" title="Neue Zeile darunter">＋</button>
+          <button data-aktion="pause" title="Pause nach dieser Zeile (nochmal: entfernen)">⏸</button>
           <button data-aktion="loeschen" title="Zeile löschen">✕</button>
         </div>
       </div>`);
+      if (zeitplan.nach.has(zi)) teile.push(zeitplan.nach.get(zi));
     });
     el.innerHTML = teile.join('');
     el.scrollTop = scroll;
@@ -474,6 +478,7 @@ export class Editor {
     if (aktion === 'abhier') { this.app.abHierStarten(zi); return; }
     if (aktion === 'bearbeiten') this.zeileDialog(zi, false);
     if (aktion === 'einfuegen') this.zeileDialog(zi, true);
+    if (aktion === 'pause') this.pauseAnZeile(z);
     if (aktion === 'streichen') {
       this.app.aendern((st) => { st.zeilen[zi].gestrichen = !st.zeilen[zi].gestrichen; });
       const n = this.st.cues.filter((c) => c.zeile === z.id && c.ausloeser !== 'manuell').length;
@@ -491,10 +496,29 @@ export class Editor {
             c.wort = st.zeilen[zi + 1] ? 0 : Math.max(0, S.woerterIn(naechste.text).length - 1);
           }
         }
+        for (const p of st.zeitplan?.pausen || []) if (p.zeile === z.id) p.zeile = (st.zeilen[zi - 1] || st.zeilen[zi + 1])?.id || '';
         st.zeilen.splice(zi, 1);
         if (!naechste) st.cues = st.cues.filter((c) => c.zeile !== z.id);
       });
     }
+  }
+
+  // ⏸ an einer Zeile: Pause (ohne Start-Cue) hinter diese Zeile setzen; nochmal = Stelle wieder entfernen
+  pauseAnZeile(z) {
+    let text = '';
+    this.app.aendern((st) => {
+      st.zeitplan ||= { beginn: '', pausen: [], ereignisse: [] };
+      st.zeitplan.pausen ||= [];
+      st.zeitplan.ereignisse ||= [];
+      const pausen = st.zeitplan.pausen;
+      const hier = pausen.find((p) => !p.startCue && p.zeile === z.id);
+      if (hier) { hier.zeile = ''; text = `${hier.name}: Stelle im Text entfernt.`; return; }
+      let p = pausen.find((x) => !x.startCue && !x.zeile);
+      if (!p) { p = { id: S.neueId('p'), name: `Pause ${pausen.length + 1}`, dauer: 20, startCue: '' }; pausen.push(p); }
+      p.zeile = z.id;
+      text = `${p.name} nach dieser Zeile. Dauer, Gongs usw. im „⏱ Zeitplan“.`;
+    });
+    toast(text, 3500);
   }
 
   umnummerieren() {
@@ -551,6 +575,7 @@ export class Editor {
 
     skript.addEventListener('click', (e) => {
       if (this.app.modus !== 'bearbeiten') return;
+      if (e.target.closest('.zp-block')) { this.app.zeitplanDialog.oeffnen(); return; }
       const mark = e.target.closest('.mark');
       if (mark) {
         e.stopPropagation();

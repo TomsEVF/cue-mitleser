@@ -108,6 +108,10 @@ die veröffentlichte App inklusive Modell nur in `gh-pages`.
   „Beginn jetzt“, „±1 / +5 min“, „Pause starten“, „+1 min“, „Pause beenden“.
 - Ereignisse erscheinen als **Standby/GO-Karten** (mit Ton/Blitz) und werden mit „Erledigt“ quittiert. Was schon vorbei war,
   als die App geöffnet oder der Beginn verschoben wurde, wird nicht nachgeholt.
+- **Im Text sichtbar** (Bearbeiten und Prompter): vor der ersten Zeile ein Block mit Beginn und Gongs/Ansagen samt Uhrzeit,
+  jede Pause als Block hinter der Zeile mit ihrem Start-Cue. Pausen ohne Start-Cue setzt man mit **⏸** an einer Zeile
+  (nochmal ⏸ = Stelle entfernen). In Probe/Show zeigen die Blöcke echte Uhrzeiten und was erledigt ist (✓).
+  Antippen eines Blocks im Bearbeiten-Modus öffnet den Zeitplan.
 
 ### Text
 

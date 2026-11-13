@@ -3,7 +3,7 @@ import * as S from './skript.js';
 import { Tracker } from './tracker.js';
 import { api, toast, lokal } from './hilfen.js';
 import { audioKontext } from './erkennung.js';
-import { ZeitplanLauf } from './zeitplan.js';
+import { ZeitplanLauf, zeitplanImSkript } from './zeitplan.js';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -700,6 +700,9 @@ export class Laufzeit {
 
     const erkannt = this.anzeigePos - 1;
     const html = [];
+    // Pausen und Zeit-Ereignisse im Text
+    const zeitplan = zeitplanImSkript(this.st, this.ix, this.zeit);
+    if (von === 0) html.push(zeitplan.vorne);
     for (let j = von; j < bis; j++) {
       const zi = sichtbar[j];
       const z = zeilen[zi];
@@ -719,6 +722,9 @@ export class Laufzeit {
         text += (chipsAn.get(key) || []).join('') + `<span class="${cls.join(' ')}" data-z="${zi}" data-w="${tk.idx}">${esc(tk.text)}</span> `;
       }
       html.push(`<div class="${klasse.join(' ')}" data-z="${zi}"><div class="rolle">${esc(z.rolle)}</div><div>${text}</div></div>`);
+      // Pausenblock dieser Zeile – und gestrichener Zeilen bis zur nächsten sichtbaren
+      const naechste = j + 1 < sichtbar.length ? sichtbar[j + 1] : zeilen.length;
+      for (let x = zi; x < naechste; x++) if (zeitplan.nach.has(x)) html.push(zeitplan.nach.get(x));
     }
     pr.innerHTML = html.join('') || '<div class="pz">Kein Skript.</div>';
     if (this.blaettern) {

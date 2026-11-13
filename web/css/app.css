@@ -456,3 +456,24 @@ dialog:has(.zeitplan-dialog) { max-width: 1000px; }
 .zp-zeile .zp-klein { flex-direction: row; align-items: center; gap: 4px; font-size: 12px; }
 .zp-zeile select, .zp-zeile input { min-height: 32px; }
 .zp-beginn { flex-direction: row !important; align-items: center; gap: 10px !important; font-size: 15px !important; color: var(--text) !important; }
+
+/* ---- Zeitplan im Text (Pausen, Gongs, Ansagen) */
+.zp-block { margin: 10px 8px 14px; padding: 8px 12px; border: 1px dashed #ffffff33; border-left: 4px solid #ffe2a8; border-radius: 6px; background: #ffe2a80d; font-size: 14px; line-height: 1.5; color: var(--text2); cursor: pointer; }
+.zp-block.zb-beginn { border-left-color: #6aa8ff; background: #6aa8ff0d; }
+.zp-block.laeuft { border-style: solid; background: #ffe2a822; }
+.zp-block.vorbei { opacity: .55; }
+.zp-block .zb-kopf { color: var(--text); font-size: 15px; margin-bottom: 2px; }
+.zp-block .zb-e { display: grid; grid-template-columns: 52px auto 1fr auto; gap: 10px; align-items: baseline; padding: 1px 0; }
+.zp-block .zb-uhr { font: 600 13px var(--mono); color: var(--text2); }
+.zp-block .zb-typ { font: 700 12px var(--mono); padding: 0 5px; border-radius: 4px; background: var(--typfarbe, #888); color: #000; white-space: nowrap; }
+.zp-block .zb-bez small { color: var(--text3); }
+.zp-block .zb-wann { color: var(--text3); font-size: 12px; text-align: right; }
+.zp-block .zb-marke { grid-template-columns: 52px 1fr; color: var(--text); font-weight: 600; }
+.zp-block .zb-e.erledigt { opacity: .4; }
+.zp-block .zb-e.warnung .zb-bez { color: var(--typfarbe); font-weight: 600; }
+.zp-block .zb-e.go { background: #ffffff14; border-radius: 4px; }
+.zp-block .zb-e.go .zb-bez { color: #fff; font-weight: 700; }
+.zb-e.typ-LX { --typfarbe: var(--LX); } .zb-e.typ-SND { --typfarbe: var(--SND); } .zb-e.typ-VID { --typfarbe: var(--VID); }
+.zb-e.typ-BT { --typfarbe: var(--BT); } .zb-e.typ-INFO { --typfarbe: var(--INFO); }
+#prompter .zp-block { font-size: 15px; cursor: default; }
+@media (max-width: 600px) { .zp-block .zb-e { grid-template-columns: 46px auto 1fr; } .zp-block .zb-wann { grid-column: 3; text-align: left; } }

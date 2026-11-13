@@ -4,7 +4,7 @@ import { Editor } from './editor.js';
 import { Laufzeit } from './show.js';
 import { Erkennung, entsperren, MODELL_URL, modellInfo, modellHerunterladen, modellLoeschen, modellAusDatei, voskModellStarten } from './erkennung.js';
 
-export const APP_VERSION = '2026-11-13 b';
+export const APP_VERSION = '2026-11-13 c';
 import { dateiLesen } from './datei-import.js';
 import { Diagnose } from './diagnose.js';
 import { pegelReglerEinbauen } from './pegel-regler.js';

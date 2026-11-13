@@ -262,7 +262,7 @@ Diese Aufbereitung betrifft nur den Abgleich mit der Spracherkennung, der angeze
 | `cues[].dauer` | `null` = einmaliger Cue, sonst `art`: `wort` (läuft bis `zeile`/`wort`, dort eigene Ansage „… Ende“) · `zeit` (Timer, meldet sich nach `sekunden`) · `manuell` (läuft, bis man ihn in der „Läuft“-Leiste beendet). `text` = Ansage am Ende |
 | `cues[].gruppe` | Cues mit derselben Gruppen-ID kommen **gleichzeitig** (im Formular „Gleichzeitig mit“). Ohne Gruppe kommen Cues an derselben Stelle **nacheinander** |
 | `cues[].folge` | Reihenfolge nacheinander folgender Cues am selben Anker (Cue-Liste ↑/↓) |
-| `zeitplan` | `{ beginn: "19:30", pausen: [{id, name, dauer (min), startCue}], ereignisse: [{id, typ, nummer, bezeichnung, notiz, bezug: "beginn" \| "pstart:<pausenId>" \| "pende:<pausenId>", minuten (negativ = vorher), vorlauf (s)}] }` – Ereignisse nach der Uhr (Gongs, Pausen, Ansagen) |
+| `zeitplan` | `{ beginn: "19:30", pausen: [{id, name, dauer (min), startCue, zeile (Zeilen-ID, Stelle im Text, falls kein startCue)}], ereignisse: [{id, typ, nummer, bezeichnung, notiz, bezug: "beginn" \| "pstart:<pausenId>" \| "pende:<pausenId>", minuten (negativ = vorher), vorlauf (s)}] }` – Ereignisse nach der Uhr (Gongs, Pausen, Ansagen) |
 
 ---
 
