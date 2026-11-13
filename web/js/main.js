@@ -4,10 +4,11 @@ import { Editor } from './editor.js';
 import { Laufzeit } from './show.js';
 import { Erkennung, entsperren, MODELL_URL, modellInfo, modellHerunterladen, modellLoeschen, modellAusDatei, voskModellStarten } from './erkennung.js';
 
-export const APP_VERSION = '2026-11-13 a';
+export const APP_VERSION = '2026-11-13 b';
 import { dateiLesen } from './datei-import.js';
 import { Diagnose } from './diagnose.js';
 import { pegelReglerEinbauen } from './pegel-regler.js';
+import { ZeitplanDialog } from './zeitplan.js';
 import { pegelEinst, pegelSetzen } from './erkennung.js';
 import { modellAbsturzVermutet } from './erkennung.js';
 import { BEISPIEL } from './beispiel.js';
@@ -29,6 +30,7 @@ class App {
     this.laufzeit = new Laufzeit(this);
     this.version = APP_VERSION;
     this.diagnose = new Diagnose(this);
+    this.zeitplanDialog = new ZeitplanDialog(this);
     // Verstärkungs-Regler mit Live-Pegel (Einstellungen + Probe-Spalte)
     this.pegelRegler = [
       pegelReglerEinbauen($('#pegelEinstellungen'), { hinweis: 'Live-Pegel erscheint, wenn Probe/Show läuft – oder im Mikrofon-Test.' }),
@@ -114,7 +116,7 @@ class App {
   // Jede Änderung läuft hierüber: Rückgängig-Schnappschuss, Index neu, speichern, neu zeichnen.
   aendern(fn, { render = true } = {}) {
     if (!this.stueck) return;
-    this.undo.push(JSON.stringify({ zeilen: this.stueck.zeilen, cues: this.stueck.cues, einstellungen: this.stueck.einstellungen }));
+    this.undo.push(JSON.stringify({ zeilen: this.stueck.zeilen, cues: this.stueck.cues, einstellungen: this.stueck.einstellungen, zeitplan: this.stueck.zeitplan ?? null }));
     if (this.undo.length > 200) this.undo.shift();
     this.redo = [];
     fn(this.stueck);
@@ -129,7 +131,7 @@ class App {
   wiederholen() { this.zeitreise(this.redo, this.undo, 'Wiederholt'); }
   zeitreise(von, nach, text) {
     if (!von.length || !this.stueck) return;
-    nach.push(JSON.stringify({ zeilen: this.stueck.zeilen, cues: this.stueck.cues, einstellungen: this.stueck.einstellungen }));
+    nach.push(JSON.stringify({ zeilen: this.stueck.zeilen, cues: this.stueck.cues, einstellungen: this.stueck.einstellungen, zeitplan: this.stueck.zeitplan ?? null }));
     Object.assign(this.stueck, JSON.parse(von.pop()));
     this.neuIndex();
     this.speichernSpaeter();
@@ -233,6 +235,7 @@ class App {
   bindeKopf() {
     $('#stueckListe').addEventListener('change', (e) => this.oeffnen(e.target.value));
     $('#asrStatus').addEventListener('click', () => this.diagnose.oeffnen());
+    $('#btnZeitplan').addEventListener('click', () => this.zeitplanDialog.oeffnen());
     $('#ampel').addEventListener('click', () => this.diagnose.oeffnen());
     $('#btnModellLaden').addEventListener('click', () => this.modellAktion('laden'));
     $('#btnModellNeu').addEventListener('click', () => this.modellAktion('neu'));

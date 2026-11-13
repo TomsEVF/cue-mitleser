@@ -71,7 +71,15 @@ die veröffentlichte App inklusive Modell nur in `gh-pages`.
 | **Probe** | wie Show, plus Debug-Spalte: erkannter Text, Trefferquote, Simulation per Tastatur, Mitschnitt |
 | **Show** | ruhige Anzeige: Cue-Karte (Standby → Bereit → GO), Prompter, nächste Cues, Pegel, Ampel. Bearbeiten ist gesperrt |
 
+### Cue-Typen
+
+`LX` Licht · `SND` Ton · `VID` Video · `BT` Bühnentechnik (Vorhang, Züge, Drehbühne, Umbau …) · `INFO` Ansage/Hinweis.
+
 ### Cue-Arten (im Cue-Formular)
+
+- **Nacheinander oder gleichzeitig:** Mehrere Cues an derselben Stelle (z. B. vor Beginn oder in einer Sprechpause) kommen
+  **nacheinander**: erst die eine Karte, nach „Erledigt“ die nächste („Danach: …“). Die Reihenfolge lässt sich in der Cue-Liste mit ↑/↓ ändern.
+  **Gleichzeitig** kommen sie nur mit „Gleichzeitig mit …“ im Formular.
 
 - **Einmalig:** GO am Stichwort.
 - **Läuft bis zu einem Stichwort:** z. B. Musik oder Lichtstimmung. „Endwort wählen“ und dann ein Wort antippen. Dort kommt eine eigene Ansage („GO SND 4 Ende – Musik ausblenden“). Im Skript ist der Bereich am Rand markiert.
@@ -90,6 +98,16 @@ die veröffentlichte App inklusive Modell nur in `gh-pages`.
 - **Laufzeit messen:** Einen laufenden Cue in der „Läuft“-Leiste antippen und beenden. Die App bietet an,
   die gemessene Zeit als Timer zu speichern.
 - Alle Änderungen werden sofort gespeichert. Im Show-Modus ist Bearbeiten gesperrt.
+
+### Zeitplan der Vorstellung (⏱ Zeitplan im Bearbeiten-Modus)
+
+- **Vorstellungsbeginn** (Uhrzeit), **Pausen** (Dauer; Start per Knopf oder automatisch mit einem Cue) und **Zeit-Ereignisse**,
+  z. B. „1. Gong – 7 min vor Vorstellungsbeginn“, „Pausengong – 5 min vor Ende Pause 1“, „INFO Ansage Handys aus – 1 min vor Beginn“.
+  Knöpfe für Gongs vor Beginn (7/5/2 min) und Pausengongs (5/3/1 min vor Ende).
+- In Probe/Show zeigt eine **Zeitleiste** Uhr, Countdown bis Beginn bzw. Pausenende und das nächste Ereignis, mit
+  „Beginn jetzt“, „±1 / +5 min“, „Pause starten“, „+1 min“, „Pause beenden“.
+- Ereignisse erscheinen als **Standby/GO-Karten** (mit Ton/Blitz) und werden mit „Erledigt“ quittiert. Was schon vorbei war,
+  als die App geöffnet oder der Beginn verschoben wurde, wird nicht nachgeholt.
 
 ### Text
 

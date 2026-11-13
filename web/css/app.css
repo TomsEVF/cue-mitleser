@@ -422,3 +422,37 @@ button.asr { background: none; border: 0; padding: 4px 6px; color: inherit; font
 .pr-roh { position: absolute; top: 0; bottom: 0; width: 2px; left: 0; background: #fff; opacity: .7; transition: left .1s; }
 .pegel-regler .pr-text { font-size: 12px; min-height: 16px; }
 .debug .pegel-regler { padding: 8px; }
+
+/* ---------- Bühnentechnik (BT) und Ansage/Info (INFO) */
+:root { --BT: #ff8a3d; --BT-dunkel: #3d2410; --INFO: #c9a7ff; --INFO-dunkel: #2a1f40; }
+.w.stich-BT { color: var(--BT); } .w.stich-INFO { color: var(--INFO); }
+.mark.t-BT { background: var(--BT); } .mark.t-INFO { background: var(--INFO); }
+.mark.manuell.t-BT, .mark.ende.t-BT { color: var(--BT); } .mark.manuell.t-INFO, .mark.ende.t-INFO { color: var(--INFO); }
+.t-BT:not(.mark) { --typ: var(--BT); } .t-INFO:not(.mark) { --typ: var(--INFO); }
+.filter button.t-BT, .filter button.t-INFO { color: var(--typ); }
+.filter button.aktiv.t-BT, .filter button.aktiv.t-INFO { background: var(--typ); color: #111; }
+.typ-BT { --typfarbe: var(--BT); --typdunkel: var(--BT-dunkel); } .typ-INFO { --typfarbe: var(--INFO); --typdunkel: var(--INFO-dunkel); }
+.zeile.bereich-BT { --b: #ff8a3d66; } .zeile.bereich-INFO { --b: #c9a7ff66; }
+.filter { flex-wrap: wrap; }
+.typ-wahl button { padding-left: 4px; padding-right: 4px; }
+.cue-karte.folgt { opacity: .6; border-style: dashed; border-color: var(--typfarbe); }
+.cue-karte.folgt .stufe, .cue-karte.folgt .titel { color: var(--typfarbe); }
+.cue-eintrag .vorschlag .hinweis { font-size: 11px; }
+
+/* ---------- Zeitplan */
+.zeit-leiste { flex: none; display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; padding: 8px 18px; background: #0b0f14; border-bottom: 1px solid #1d2733; font-size: 15px; color: var(--text2); }
+.zeit-leiste .zl-uhr { font: 700 20px var(--mono); color: #fff; }
+.zeit-leiste .zl-block { display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.zeit-leiste .zl-block b { color: var(--text); }
+.zeit-leiste button { padding: 3px 10px; min-height: 34px; font-size: 14px; }
+.zeit-leiste .zl-pause { color: #ffe2a8; }
+.zeit-leiste .zl-naechstes b { color: var(--typfarbe, var(--text)); }
+.cue-karte.zeit-karte .stufe { font-size: 13px; }
+.zeitplan-dialog { max-width: 980px; }
+dialog:has(.zeitplan-dialog) { max-width: 1000px; }
+.zp-liste { display: flex; flex-direction: column; gap: 6px; }
+.zp-zeile { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px 8px; border: 1px solid var(--linie); border-radius: var(--radius); background: var(--bg); }
+.zp-zeile .zp-breit { flex: 1; min-width: 140px; }
+.zp-zeile .zp-klein { flex-direction: row; align-items: center; gap: 4px; font-size: 12px; }
+.zp-zeile select, .zp-zeile input { min-height: 32px; }
+.zp-beginn { flex-direction: row !important; align-items: center; gap: 10px !important; font-size: 15px !important; color: var(--text) !important; }

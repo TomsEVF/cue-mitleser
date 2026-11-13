@@ -139,7 +139,7 @@ ergibt die Überschrift „Erster Akt …“ und zwei manuelle SND-Cues: „O-To
 
 | Teil | Werte | Pflicht |
 | --- | --- | --- |
-| `TYP` | `LX` / `LICHT` → LX · `SND` / `TON` / `SOUND` → SND · `VID` / `VIDEO` → VID (Groß-/Kleinschreibung egal) | ja |
+| `TYP` | `LX` / `LICHT` → LX · `SND` / `TON` / `SOUND` → SND · `VID` / `VIDEO` → VID · `BT` / `BÜHNE` / `BÜHNENTECHNIK` → BT (Bühnentechnik) · `INFO` / `ANSAGE` → INFO (Groß-/Kleinschreibung egal) | ja |
 | `NUMMER` | `12`, `12.5`, `12,5` (wird zu `12.5`), `12a` | nein |
 | `BEZEICHNUNG` | freier Text bis `]` | nein |
 | `manuell` | Wort am Ende der Bezeichnung → Cue ohne Stichwort, wird per „Erledigt“/Leertaste quittiert. Mit `manuell: Text` wird der Text als **Einsatz** angezeigt (wann der Cue kommt) | nein |
@@ -147,7 +147,7 @@ ergibt die Überschrift „Erster Akt …“ und zwei manuelle SND-Cues: „O-To
 - **GO-Wort:** das **nächste gesprochene Wort nach** dem Marker. Folgt in der Zeile keines, ist es das erste gesprochene Wort der folgenden Zeilen. Steht der Marker ganz am Ende des Stücks, ist es das letzte Wort.
 - **Nummer:** wird übernommen, wie sie im Marker steht.
 - **Vorlauf:** der Standardwert aus den Einstellungen (20 Wörter).
-- **Mehrere Marker** am selben Wort werden zu einer Ansage zusammengefasst (`GO LX 12 + SND 4`).
+- **Mehrere Marker** am selben Wort kommen **nacheinander** (erst der eine, nach „Erledigt“ der nächste). Gleichzeitig nur, wenn im Cue-Formular „Gleichzeitig mit“ gesetzt ist.
 
 Beispiele: `[LX 12 Blackout langsam]` · `[SND 4]` · `[VID 2 Projektion Fahrplan]` · `[SND 5 Applaus manuell]` · `[SND 6 Musik manuell: nach dem Applaus]`
 
@@ -179,7 +179,7 @@ Der Hinweis wird in Klammern gesetzt und deshalb nicht mitgelesen. Ein `-` ohne 
 
 | Eigenschaft | Regel |
 | --- | --- |
-| Typ | nach Stichwörtern: `black, blackout, licht, spot, dimm…, lx` → **LX** · `reel, video, film, projektion, beamer, vid` → **VID** · `musik, ton, töne, sound, klingel, läut, bell, röchel, geräusch, alarm, einspieler, snd` → **SND**. Passen mehrere Typen, entsteht je Typ ein Cue (`Black Musik` → LX + SND). Passt keiner, wird es SND. |
+| Typ | nach Stichwörtern: `black, blackout, licht, spot, dimm…, lx` → **LX** · `reel, video, film, projektion, beamer, vid` → **VID** · `musik, ton, töne, sound, klingel, läut, bell, röchel, geräusch, alarm, einspieler, snd` → **SND** · `vorhang, versenkung, drehbühne, hubpodium, prospekt, schleier, umbau, bühnenbild, kulisse, zug 3` → **BT** · `ansage, durchsage, einlass` → **INFO**. Passen mehrere Typen, entsteht je Typ ein Cue, und diese sind **gleichzeitig** (`Black Musik` → LX + SND zusammen). Passt keiner, wird es SND. |
 | Nummer | pro Typ fortlaufend ab 1 in Stückreihenfolge. Die Nummerierung ist **unabhängig von Cue-Markern**, beim Mischen können doppelte Nummern entstehen (die App warnt). |
 | Bezeichnung | der Hinweistext ohne `-` und Schlusspunkt, max. 60 Zeichen. Reine Großschreibung wird angepasst (`BLACK` → „Black“). |
 | GO-Wort | das **letzte gesprochene Wort vor** dem Hinweis |
@@ -252,7 +252,7 @@ Diese Aufbereitung betrifft nur den Abgleich mit der Spracherkennung, der angeze
 | --- | --- |
 | `zeilen[].typ` | `text` (gesprochen) · `regie` · `szene` |
 | `zeilen[].gestrichen` | `true` = angezeigt, aber nicht mitgelesen |
-| `cues[].typ` | `LX` · `SND` · `VID` |
+| `cues[].typ` | `LX` · `SND` · `VID` · `BT` (Bühnentechnik) · `INFO` (Ansage/Info) |
 | `cues[].nummer` | Text, z. B. `"12.5"` |
 | `cues[].zeile` | `id` der Zeile mit dem GO-Wort |
 | `cues[].wort` | 0-basierter Index des Worts in `text` (Wörter = durch Leerzeichen getrennt, Klammerwörter mitgezählt). Liegt das Wort in Regie oder einer gestrichenen Zeile, rutscht das GO auf das nächste gesprochene Wort. |
@@ -260,7 +260,9 @@ Diese Aufbereitung betrifft nur den Abgleich mit der Spracherkennung, der angeze
 | `cues[].ausloeser` | `wort` (GO beim Erkennen) · `manuell` (Standby nach dem vorigen Cue, Quittung per Leertaste) |
 | `cues[].einsatz` | nur bei `manuell`: Text, wann der Cue kommt („nach dem Applaus“), groß in der Standby-Karte |
 | `cues[].dauer` | `null` = einmaliger Cue, sonst `art`: `wort` (läuft bis `zeile`/`wort`, dort eigene Ansage „… Ende“) · `zeit` (Timer, meldet sich nach `sekunden`) · `manuell` (läuft, bis man ihn in der „Läuft“-Leiste beendet). `text` = Ansage am Ende |
-| gleichzeitig | Cues mit demselben Stichwort (bzw. manuelle Cues mit demselben Anker) werden zusammen angesagt und quittiert – im Formular über „Gleichzeitig mit“ |
+| `cues[].gruppe` | Cues mit derselben Gruppen-ID kommen **gleichzeitig** (im Formular „Gleichzeitig mit“). Ohne Gruppe kommen Cues an derselben Stelle **nacheinander** |
+| `cues[].folge` | Reihenfolge nacheinander folgender Cues am selben Anker (Cue-Liste ↑/↓) |
+| `zeitplan` | `{ beginn: "19:30", pausen: [{id, name, dauer (min), startCue}], ereignisse: [{id, typ, nummer, bezeichnung, notiz, bezug: "beginn" \| "pstart:<pausenId>" \| "pende:<pausenId>", minuten (negativ = vorher), vorlauf (s)}] }` – Ereignisse nach der Uhr (Gongs, Pausen, Ansagen) |
 
 ---
 
