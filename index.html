@@ -112,6 +112,7 @@
           <div class="debug-zeile"><span>Trefferquote</span><b id="dbgQuote">–</b></div>
           <div class="debug-zeile"><span>Erkannte Wörter</span><b id="dbgAnzahl">0</b></div>
           <div class="debug-zeile"><span>Position</span><b id="dbgPos">0</b></div>
+          <div id="pegelProbe"></div>
           <h4>Vorläufig</h4>
           <div id="dbgPartial" class="dbg-text"></div>
           <h4>Erkannt (endgültig)</h4>
@@ -211,7 +212,7 @@
       <h2>Mikrofon &amp; Erkennung testen</h2>
       <p class="hinweis">Prüft auf diesem Gerät Schritt für Schritt Mikrofon, Ton, Sprachmodell und Erkennung.
         Nach dem Start bitte normal sprechen. Läuft gerade Probe/Show, wird das Mikrofon kurz übernommen.</p>
-      <div class="diag-pegel"><div id="diagPegel"></div></div>
+      <div id="pegelDiagnose"></div>
       <div id="diagErkannt" class="diag-erkannt"></div>
       <div id="diagErgebnis" class="diag-ergebnis"></div>
       <pre id="diagLog" class="bericht"></pre>
@@ -264,6 +265,11 @@
         <input type="file" id="modellDatei" accept=".gz,.tgz,.zip,application/gzip,application/zip,application/x-gzip" hidden>
       </div>
       <label id="einstGeraetFeld">Mikrofon<select id="einstGeraet"></select></label>
+      <div id="pegelEinstellungen"></div>
+      <div class="modell-knoepfe" id="geraeteOptionen">
+        <label class="schalter"><input type="checkbox" id="einstAgc"> Automatische Pegelanpassung des Geräts</label>
+        <label class="schalter"><input type="checkbox" id="einstRausch"> Rauschunterdrückung des Geräts (kann leise Stimmen verschlucken)</label>
+      </div>
       <button type="button" id="btnDiagnose">🎤 Mikrofon &amp; Erkennung testen …</button>
       <label class="schalter" id="einstVokabular"><input type="checkbox" name="vokabularBeschraenken"> Erkennung auf Wörter des Skripts beschränken (oft genauer mit kleinem Modell – in der Probe testen)</label>
       <h3>Speicher</h3>

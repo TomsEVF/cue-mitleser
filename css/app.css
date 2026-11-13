@@ -410,3 +410,15 @@ button.asr { background: none; border: 0; padding: 4px 6px; color: inherit; font
 .hinweis.gut { color: #9be3b0; }
 .hinweis.schlecht { color: #ffb3ad; }
 #ampel { cursor: pointer; }
+
+/* ---------- Mikrofon-Verstärkung */
+.pegel-regler { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px solid var(--linie); border-radius: var(--radius); background: var(--bg); }
+.pegel-regler .pr-zeile { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; color: var(--text2); }
+.pegel-regler .pr-zeile b { color: var(--text); font-family: var(--mono); font-size: 13px; }
+.pegel-regler input[type=range] { width: 100%; accent-color: #6aa8ff; min-height: 28px; }
+.pr-meter-rahmen { position: relative; height: 14px; background: #1d1d1d; border-radius: 7px; overflow: hidden; }
+.pr-ziel { position: absolute; left: 30%; width: 50%; top: 0; bottom: 0; background: #2e8b5733; border-left: 1px solid #2e8b57; border-right: 1px solid #2e8b57; }
+.pr-meter { position: absolute; inset: 0; background: linear-gradient(90deg, #d4b106 0 30%, #2e8b57 30% 80%, #d9443b 80%); clip-path: inset(0 calc(100% - var(--p, 0%)) 0 0); transition: clip-path .1s; opacity: .9; }
+.pr-roh { position: absolute; top: 0; bottom: 0; width: 2px; left: 0; background: #fff; opacity: .7; transition: left .1s; }
+.pegel-regler .pr-text { font-size: 12px; min-height: 16px; }
+.debug .pegel-regler { padding: 8px; }
