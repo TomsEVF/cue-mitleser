@@ -104,7 +104,7 @@ export class ZeitplanDialog {
       if (dlg.returnValue !== 'ok') return;
       this.z.beginn = $('#zpBeginn').value;
       const neu = this.z;
-      this.app.aendern((st) => { st.zeitplan = neu; }, { render: false });
+      this.app.aendern((st) => { st.zeitplan = neu; });
       toast(`Zeitplan gespeichert: ${neu.ereignisse.length} Ereignisse, ${neu.pausen.length} Pausen.`);
     };
     dlg.showModal();
@@ -141,7 +141,7 @@ export class ZeitplanDialog {
       <input data-f="name" value="${esc(p.name)}" placeholder="Pause 1" size="10">
       <input data-f="dauer" type="number" min="0" step="any" value="${esc(p.dauer)}" style="width:5em"> <span>min</span>
       <label class="zp-klein">beginnt
-        <select data-f="startCue"><option value="">wenn ich „Pause starten“ tippe</option>
+        <select data-f="startCue"><option value="">wenn ich „Pause starten“ tippe${p.zeile ? ' (Stelle im Text per ⏸)' : ''}</option>
           ${cues.map((c) => `<option value="${c.id}" ${c.id === p.startCue ? 'selected' : ''}>automatisch mit ${esc(S.cueLabel(c))} ${esc(c.bezeichnung || '')}</option>`).join('')}
         </select></label>
       <button type="button" data-weg="pausen:${i}" title="Pause löschen">✕</button>
@@ -158,6 +158,82 @@ export class ZeitplanDialog {
       <button type="button" data-weg="ereignisse:${i}" title="Ereignis löschen">✕</button>
     </div>`).join('') || '<p class="hinweis">Noch keine Zeit-Ereignisse. Z. B. „＋ Gongs vor Beginn“.</p>';
   }
+}
+
+// ======================================================================== Anzeige im Text
+// Liefert HTML-Blöcke für den Text (Bearbeiten und Prompter):
+//   vorne: Ereignisse rund um den Vorstellungsbeginn (vor der ersten Zeile)
+//   nach:  Map Zeilenindex → Pausenblock (hinter der Zeile mit dem Start-Cue der Pause)
+// lauf (optional, ZeitplanLauf): echte Uhrzeiten und Zustand (Standby/GO/erledigt)
+export function zeitplanImSkript(st, ix, lauf = null) {
+  const zp = zeitplanVon(st);
+  const nach = new Map();
+  if (!zp.beginn && !zp.ereignisse.length && !zp.pausen.length) return { vorne: '', nach };
+  const jetzt = Date.now();
+
+  // geplante Uhrzeit (ohne Lauf nur für Ereignisse relativ zum Beginn bekannt)
+  const geplanterBeginn = () => {
+    if (!zp.beginn) return null;
+    const [h, m] = zp.beginn.split(':').map(Number);
+    const d = new Date(); d.setHours(h, m, 0, 0);
+    return d.getTime();
+  };
+  const zeitVon = (e) => {
+    if (lauf) return lauf.zeitVon(e);
+    return e.bezug === 'beginn' && zp.beginn ? geplanterBeginn() + (Number(e.minuten) || 0) * 60000 : null;
+  };
+  const zeile = (e, wann) => {
+    const t = zeitVon(e);
+    const s = lauf ? lauf.stufe(e, jetzt) : '';
+    const label = `${e.typ}${e.nummer ? ` ${e.nummer}` : ''}`;
+    return `<div class="zb-e typ-${e.typ} ${s}" title="${esc(wannText(e, zp))}">
+      <span class="zb-uhr">${t != null ? uhr(t) : ''}</span>
+      <span class="zb-typ">${esc(label)}</span>
+      <span class="zb-bez">${esc(e.bezeichnung || '')}${e.notiz ? ` <small>${esc(e.notiz)}</small>` : ''}</span>
+      <span class="zb-wann">${esc(wann)}${s === 'erledigt' ? ' ✓' : ''}</span>
+    </div>`;
+  };
+  const relText = (m, ref) => (!m ? `bei ${ref}` : `${minutenText(m)} min ${m < 0 ? 'vor' : 'nach'} ${ref}`);
+
+  // --- vor der Vorstellung
+  const ab = zp.ereignisse.filter((e) => e.bezug === 'beginn').sort((a, b) => (a.minuten || 0) - (b.minuten || 0));
+  const beginnT = lauf ? lauf.beginnZeit() : geplanterBeginn();
+  const vorher = ab.filter((e) => (e.minuten || 0) < 0), dabei = ab.filter((e) => (e.minuten || 0) >= 0);
+  let vorne = '';
+  if (zp.beginn || ab.length) {
+    vorne = `<div class="zp-block zb-beginn" title="Zeitplan – zum Ändern antippen (Bearbeiten)">
+      <div class="zb-kopf">⏱ Vorstellung${beginnT != null ? ` · Beginn <b>${uhr(beginnT)}</b>` : ''}</div>
+      ${vorher.map((e) => zeile(e, relText(e.minuten, 'Beginn'))).join('')}
+      <div class="zb-e zb-marke"><span class="zb-uhr">${beginnT != null ? uhr(beginnT) : ''}</span><span>▶ Vorstellungsbeginn</span></div>
+      ${dabei.map((e) => zeile(e, relText(e.minuten, 'Beginn'))).join('')}
+    </div>`;
+  }
+
+  // --- Pausen
+  for (const p of zp.pausen) {
+    const dauer = Number(p.dauer) || 0;
+    const evs = zp.ereignisse.filter((e) => e.bezug === `pstart:${p.id}` || e.bezug === `pende:${p.id}`)
+      .map((e) => ({ e, k: (e.bezug.startsWith('pende') ? dauer : 0) + (Number(e.minuten) || 0) }))
+      .sort((a, b) => a.k - b.k);
+    const startCue = p.startCue ? st.cues.find((c) => c.id === p.startCue) : null;
+    // Stelle im Text: hinter der Zeile mit dem Start-Cue, sonst die per ⏸ gesetzte Zeile
+    const zi = startCue ? ix.zeilenIndex.get(startCue.zeile) : p.zeile ? ix.zeilenIndex.get(p.zeile) : undefined;
+    const z = lauf?.pausen[p.id];
+    const ende = lauf ? lauf.pauseEnde(p) : null;
+    const status = !z?.start ? '' : ende > jetzt ? ' laeuft' : ' vorbei';
+    const kopf = `⏸ <b>${esc(p.name)}</b> · ${minutenText(dauer)} min · ${
+      startCue ? `beginnt mit ${esc(S.cueLabel(startCue))}` : zi !== undefined ? 'beginnt per Knopf „Pause starten“'
+        : 'noch keine Stelle im Text – im Zeitplan einen Start-Cue wählen oder ⏸ an einer Zeile'}${
+      z?.start ? ` · ${uhr(z.start)}–${uhr(ende)}` : ''}`;
+    const html = `<div class="zp-block zb-pause${status}" title="Zeitplan – zum Ändern antippen (Bearbeiten)">
+      <div class="zb-kopf">${kopf}</div>
+      ${evs.map(({ e }) => zeile(e, relText(e.minuten, e.bezug.startsWith('pende') ? 'Ende' : 'Beginn'))).join('')}
+      <div class="zb-e zb-marke"><span class="zb-uhr">${ende ? uhr(ende) : ''}</span><span>▶ Ende ${esc(p.name)} – weiter im Text</span></div>
+    </div>`;
+    if (zi === undefined) vorne += html;   // ohne Start-Cue: keine feste Stelle im Text
+    else nach.set(zi, (nach.get(zi) || '') + html);
+  }
+  return { vorne, nach };
 }
 
 // ======================================================================== Ablauf in Probe/Show

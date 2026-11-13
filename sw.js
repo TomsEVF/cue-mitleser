@@ -2,7 +2,7 @@
 // App-Dateien (HTML/JS/CSS): zuerst aus dem Netz (immer aktuelle Version), offline aus dem Speicher.
 // Bibliotheken und Icons: aus dem Speicher (groß, ändern sich selten).
 // Das Sprachmodell verwaltet erkennung.js selbst (Cache „cue-sprachmodell-v1“).
-const VERSION = 'cue-app-v7';
+const VERSION = 'cue-app-v8';
 const DATEIEN = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'js/main.js', 'js/editor.js', 'js/show.js', 'js/skript.js', 'js/tracker.js', 'js/zahlen.js',
