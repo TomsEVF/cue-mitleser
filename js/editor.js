@@ -205,10 +205,27 @@ export class Editor {
           ${c.dauer?.art ? `<div class="dauer">${esc(S.dauerBeschreibung(c, this.ix))}</div>` : ''}
           ${(() => { const mit = (gruppeVon.get(c.id)?.cues || []).filter((x) => x.id !== c.id && !x.istEnde); return mit.length ? `<div class="mit">⇉ gleichzeitig mit ${esc(mit.map(S.cueLabel).join(', '))}</div>` : ''; })()}
           ${c.notiz ? `<div class="notiz">${esc(c.notiz)}</div>` : ''}
+          ${this.gleicheStelle(c).length > 1 ? `<div class="vorschlag"><span class="hinweis">nacheinander an derselben Stelle:</span>
+            <button data-folge="-1" data-cue="${c.id}" title="früher in der Reihenfolge">↑</button><button data-folge="1" data-cue="${c.id}" title="später in der Reihenfolge">↓</button></div>` : ''}
           ${warn.join('')}
         </span>
       </li>`;
     }).join('');
+  }
+
+  // Cues am selben Anker mit derselben Auslösung (in aktueller Reihenfolge)
+  gleicheStelle(c) {
+    return this.ix.reihenfolge.filter((x) => !x.istEnde && x.zeile === c.zeile && x.wort === c.wort && x.ausloeser === c.ausloeser);
+  }
+
+  folgeAendern(id, richtung) {
+    const c = this.st.cues.find((x) => x.id === id);
+    const liste = this.gleicheStelle(c).map((x) => x.id);
+    const i = liste.indexOf(id), j = i + richtung;
+    if (i < 0 || j < 0 || j >= liste.length) return;
+    [liste[i], liste[j]] = [liste[j], liste[i]];
+    this.app.aendern((st) => { liste.forEach((cid, k) => { st.cues.find((x) => x.id === cid).folge = k; }); });
+    this.waehle(id, { scrollListe: true });
   }
 
   // ---------------------------------------------------------------- Auswahl & Navigation
@@ -245,7 +262,7 @@ export class Editor {
     f.elements.dauerText.value = c?.dauer?.text || '';
     // „Gleichzeitig mit“: alle anderen Cues; vorausgewählt, wenn schon in einer Gruppe
     const gruppe = c ? this.ix.gruppen.find((g) => g.cues.some((x) => x.id === c.id)) : null;
-    const partner = gruppe?.cues.find((x) => x.id !== c.id && !x.istEnde);
+    const partner = c?.gruppe ? gruppe?.cues.find((x) => x.id !== c.id && !x.istEnde && x.gruppe === c.gruppe) : null;
     f.elements.mit.innerHTML = '<option value="">– eigener Einsatz –</option>' + this.ix.reihenfolge
       .filter((x) => !x.istEnde && x.id !== c?.id)
       .map((x) => `<option value="${x.id}">${esc(S.cueLabel(x))} ${esc(x.bezeichnung || '')} (${x.ausloeser === 'manuell' ? 'manuell' : `bei „${esc(this.wortVon(x))}“`})</option>`).join('');
@@ -377,13 +394,21 @@ export class Editor {
       einsatz: f.elements.einsatz.value.trim(),
       dauer,
     };
-    // „Gleichzeitig mit“: gleicher Einsatz wie der andere Cue
+    // „Gleichzeitig mit“: gleicher Einsatz wie der andere Cue, gemeinsame Gruppe → werden zusammen angesagt.
+    // Ohne Angabe kommen Cues an derselben Stelle nacheinander.
+    const gruppe = partner ? (partner.gruppe || S.neueId('g')) : undefined;
     if (partner) Object.assign(werte, { zeile: partner.zeile, wort: partner.wort, ausloeser: partner.ausloeser, einsatz: partner.einsatz || werte.einsatz });
+    werte.gruppe = gruppe;
     this.letzterTyp = d.typ;
     let id = d.cueId;
     this.app.aendern((st) => {
+      if (partner) st.cues.find((c) => c.id === partner.id).gruppe = gruppe;
       if (id) Object.assign(st.cues.find((c) => c.id === id), werte);
       else { id = S.neueId('c'); st.cues.push({ id, zeile: d.zeile, wort: d.wort, ...werte }); }
+      // allein übrig gebliebene Gruppen auflösen
+      const anzahl = new Map();
+      for (const c of st.cues) if (c.gruppe) anzahl.set(c.gruppe, (anzahl.get(c.gruppe) || 0) + 1);
+      for (const c of st.cues) if (c.gruppe && anzahl.get(c.gruppe) < 2) delete c.gruppe;
     });
     this.formularSchliessen();
     this.waehle(id, { scrollListe: true });
@@ -578,6 +603,8 @@ export class Editor {
 
     // Cue-Liste
     $('#cueListe').addEventListener('click', (e) => {
+      const f = e.target.closest('[data-folge]');
+      if (f) { e.stopPropagation(); this.folgeAendern(f.dataset.cue, Number(f.dataset.folge)); return; }
       const v = e.target.closest('[data-vorschlag]');
       if (v) {
         const id = v.dataset.cue;
@@ -641,7 +668,7 @@ export class Editor {
     f.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') { e.preventDefault(); this.formularSchliessen(); }
       // Typ per Alt+1/2/3
-      if (e.altKey && ['1', '2', '3'].includes(e.key)) {
+      if (e.altKey && ['1', '2', '3', '4', '5'].includes(e.key)) {
         e.preventDefault();
         this.form.typ = S.TYPEN[Number(e.key) - 1];
         this.typZeigen();

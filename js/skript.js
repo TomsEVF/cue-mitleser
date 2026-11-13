@@ -1,8 +1,8 @@
 // Skript-Datenmodell: Import, Zerlegung in Wörter, "sprechbare" Wortliste, Cue-Auflösung.
 import { zahlWort } from './zahlen.js';
 
-export const TYPEN = ['LX', 'SND', 'VID'];
-export const TYP_NAME = { LX: 'Licht', SND: 'Ton', VID: 'Video' };
+export const TYPEN = ['LX', 'SND', 'VID', 'BT', 'INFO'];
+export const TYP_NAME = { LX: 'Licht', SND: 'Ton', VID: 'Video', BT: 'Bühne', INFO: 'Ansage/Info' };
 
 export const STANDARD_FUELLWOERTER = ['äh', 'ähm', 'öh', 'öhm', 'hm', 'hmm', 'mhm', 'ah', 'eh', 'em', 'ehm', 'na'];
 
@@ -35,8 +35,11 @@ export function einstellungen(stueck) {
 
 // ------------------------------------------------------------------ Import
 
-const MARKER_RE = /\[\s*(LX|LICHT|SND|TON|SOUND|VID|VIDEO)\s*([0-9]+(?:[.,][0-9]+)?[a-z]?)?\s*([^\]]*)\]/gi;
-const TYP_ALIAS = { LX: 'LX', LICHT: 'LX', SND: 'SND', TON: 'SND', SOUND: 'SND', VID: 'VID', VIDEO: 'VID' };
+const MARKER_RE = /\[\s*(LX|LICHT|SND|TON|SOUND|VID|VIDEO|BT|BÜHNE|BUEHNE|BÜHNENTECHNIK|BUEHNENTECHNIK|INFO|ANSAGE)\s*([0-9]+(?:[.,][0-9]+)?[a-z]?)?\s*([^\]]*)\]/gi;
+const TYP_ALIAS = {
+  LX: 'LX', LICHT: 'LX', SND: 'SND', TON: 'SND', SOUND: 'SND', VID: 'VID', VIDEO: 'VID',
+  BT: 'BT', 'BÜHNE': 'BT', BUEHNE: 'BT', 'BÜHNENTECHNIK': 'BT', BUEHNENTECHNIK: 'BT', INFO: 'INFO', ANSAGE: 'INFO',
+};
 function markerZuCue(m, vorlauf) {
   const typ = TYP_ALIAS[m[1].toUpperCase()];
   let bez = (m[3] || '').trim();
@@ -107,6 +110,8 @@ export function cueTypen(text) {
   if (/\b(black(out)?|licht|spot|dimm\w*|lx)\b/i.test(text)) t.push('LX');
   if (/(musik|\bton\b|töne|sound|klingel|läut|bell|röchel|geräusch|alarm|einspieler|\bsnd\b)/i.test(text)) t.push('SND');
   if (/\b(reel|video|film|projektion|beamer|vid)\b/i.test(text)) t.push('VID');
+  if (/(vorhang|versenkung|drehbühne|drehscheibe|hubpodium|podium|prospekt|schleier|umbau|bühnenbild|kulisse|zug\s*\d)/i.test(text)) t.push('BT');
+  if (/(ansage|durchsage|einlass)/i.test(text)) t.push('INFO');
   return t.length ? t : ['SND'];
 }
 
@@ -256,6 +261,12 @@ function bloeckeZeilenweise(zs) {
   return bloecke;
 }
 
+// Cues ausdrücklich gleichzeitig machen (gemeinsame Gruppe)
+function gemeinsam(cues) {
+  if (cues.length > 1) { const g = neueId('g'); for (const c of cues) c.gruppe = g; }
+  return cues;
+}
+
 export function textImportieren(roh, einst = STANDARD_EINSTELLUNGEN, { hinweisCues = true } = {}) {
   const vorlauf = einst.vorlauf ?? STANDARD_EINSTELLUNGEN.vorlauf;
   const platz = [];                                   // Platzhalter ⟦n⟧ → {art: 'nach'|'vor', cues}
@@ -283,11 +294,11 @@ export function textImportieren(roh, einst = STANDARD_EINSTELLUNGEN, { hinweisCu
   let offen = [];                // Cues für das nächste gesprochene Wort
   let letztesWort = null;        // {zeile, wort}
   let cueSeitWort = false;       // seit dem letzten gesprochenen Wort schon ein Hinweis-Cue?
-  const zaehler = { LX: 0, SND: 0, VID: 0 };
-  const neueCues = (t, manuell) => cueTypen(t).map((typ) => ({
+  const zaehler = Object.fromEntries(TYPEN.map((x) => [x, 0]));
+  const neueCues = (t, manuell) => gemeinsam(cueTypen(t).map((typ) => ({
     id: neueId('c'), typ, nummer: String(++zaehler[typ]), bezeichnung: cueBezeichnung(t),
     vorlauf, notiz: '', ausloeser: manuell ? 'manuell' : 'wort',
-  }));
+  })));
   const zaehlen = (liste) => { for (const c of liste) { bericht.auto++; if (c.ausloeser === 'manuell') bericht.manuell++; } };
   // Hinweis nach dem zuletzt gesprochenen Wort; folgt er direkt auf einen anderen, wird er manuell
   const nachLetztemWort = (liste) => {
@@ -494,7 +505,7 @@ export function indexBauen(stueck) {
     aufgeloest.set(c.id, { idx, verschoben, verwaist: zi < 0, ziel });
   }
 
-  const typReihe = { LX: 0, SND: 1, VID: 2 };
+  const typReihe = Object.fromEntries(TYPEN.map((x, i) => [x, i]));
   const reihenfolge = alleCues.sort((a, b) => {
     const ra = aufgeloest.get(a.id), rb = aufgeloest.get(b.id);
     if (ra.idx !== rb.idx) return ra.idx - rb.idx;
@@ -503,19 +514,20 @@ export function indexBauen(stueck) {
     if (a.wort !== b.wort) return a.wort - b.wort;
     if (a.ausloeser !== b.ausloeser) return a.ausloeser === 'manuell' ? -1 : 1;
     if (!!a.istEnde !== !!b.istEnde) return a.istEnde ? -1 : 1;
+    if ((a.folge ?? 1e6) !== (b.folge ?? 1e6)) return (a.folge ?? 1e6) - (b.folge ?? 1e6);
     if (a.typ !== b.typ) return typReihe[a.typ] - typReihe[b.typ];
     return parseFloat(a.nummer || 0) - parseFloat(b.nummer || 0);
   });
 
-  // Gruppen: Cues am selben Stichwort werden zusammen angesagt.
-  // Manuelle Cues mit demselben Anker (z. B. über „Gleichzeitig mit“) bilden ebenfalls eine Gruppe.
+  // Gruppen: Nur ausdrücklich gleichzeitige Cues (gemeinsame „gruppe“, z. B. über „Gleichzeitig mit“)
+  // werden zusammen angesagt. Alle anderen Cues an derselben Stelle kommen nacheinander.
   const gruppen = [];
   for (const c of reihenfolge) {
     const r = aufgeloest.get(c.id);
     const letzte = gruppen[gruppen.length - 1];
     const manuell = c.ausloeser === 'manuell';
-    const passt = letzte && letzte.manuell === manuell && letzte.idx === r.idx
-      && (!manuell || (letzte.cues[0].zeile === c.zeile && letzte.cues[0].wort === c.wort));
+    const passt = letzte && c.gruppe && letzte.cues.some((x) => x.gruppe === c.gruppe)
+      && letzte.manuell === manuell && letzte.idx === r.idx;
     if (passt) {
       letzte.cues.push(c);
     } else {
@@ -524,6 +536,9 @@ export function indexBauen(stueck) {
   }
   gruppen.forEach((g, i) => {
     g.nr = i;
+    // Wort-Cue am selben Stichwort wie die vorige Gruppe: kommt erst, wenn diese erledigt ist
+    const vorige = gruppen[i - 1];
+    if (vorige && !g.manuell && !vorige.manuell && vorige.idx === g.idx) g.wartetAuf = i - 1;
     g.vorlauf = Math.max(...g.cues.map((c) => Number(c.vorlauf) || 0));
   });
 

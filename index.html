@@ -49,6 +49,7 @@
       <div class="werkzeuge">
         <button id="btnImport">Skript importieren</button>
         <button id="btnZeileNeu">Zeile anfügen</button>
+        <button id="btnZeitplan" title="Vorstellungsbeginn, Pausen, Gongs, Ansagen">⏱ Zeitplan</button>
         <span class="trenner"></span>
         <button id="btnUndo" title="Rückgängig (⌘Z)">↶</button>
         <button id="btnRedo" title="Wiederholen (⇧⌘Z)">↷</button>
@@ -65,6 +66,8 @@
               <button data-filter="LX" class="t-LX">LX</button>
               <button data-filter="SND" class="t-SND">SND</button>
               <button data-filter="VID" class="t-VID">VID</button>
+              <button data-filter="BT" class="t-BT" title="Bühnentechnik">BT</button>
+              <button data-filter="INFO" class="t-INFO" title="Ansage/Info">INFO</button>
             </div>
             <button id="btnUmnummerieren" title="Cues des gewählten Typs fortlaufend nummerieren">Umnummerieren</button>
           </div>
@@ -79,6 +82,7 @@
       <div id="wiederherstellung" class="banner" hidden></div>
       <div class="lauf-raster">
         <div class="lauf-haupt">
+          <div id="zeitLeiste" class="zeit-leiste" hidden></div>
           <div id="cueHaupt" class="cue-haupt"></div>
           <div id="prompter" class="prompter"></div>
           <div id="abHierLeiste" class="ab-hier" hidden>
@@ -150,6 +154,8 @@
       <button type="button" data-typ="LX" class="t-LX">LX</button>
       <button type="button" data-typ="SND" class="t-SND">SND</button>
       <button type="button" data-typ="VID" class="t-VID">VID</button>
+      <button type="button" data-typ="BT" class="t-BT" title="Bühnentechnik: Vorhang, Züge, Drehbühne, Umbau …">BT</button>
+      <button type="button" data-typ="INFO" class="t-INFO" title="Ansage, Hinweis, Sonstiges">INFO</button>
     </div>
     <div class="feld-reihe">
       <label>Nummer<input name="nummer" size="5"></label>
@@ -160,7 +166,7 @@
       <label class="schalter"><input type="checkbox" name="manuell"> manuell (ohne Stichwort)</label>
     </div>
     <label id="einsatzFeld">Einsatz – wann genau?<input name="einsatz" placeholder="z. B. nach dem Applaus, wenn die Tür zufällt"></label>
-    <label>Gleichzeitig mit<select name="mit"></select></label>
+    <label>Gleichzeitig mit (sonst nacheinander)<select name="mit"></select></label>
     <div class="feld-reihe">
       <label class="breit">Dauer / Ende<select name="dauerArt">
         <option value="">einmalig (kein Ende)</option>
@@ -203,6 +209,30 @@
         <span class="platz"></span>
         <button value="abbrechen">Abbrechen</button>
         <button value="ok" class="primaer" id="importOk">Importieren</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="dlgZeitplan">
+    <form method="dialog" class="dialog zeitplan-dialog" id="zpForm">
+      <h2>⏱ Zeitplan der Vorstellung</h2>
+      <p class="hinweis">Zeit-Ereignisse kommen nach der Uhr, unabhängig vom Text: Gongs vor Beginn, Pausen mit Pausengongs,
+        Ansagen … In Probe und Show erscheinen sie als Standby/GO-Karten und werden mit „Erledigt“ quittiert.</p>
+      <label class="zp-beginn">Vorstellungsbeginn <input type="time" id="zpBeginn"></label>
+      <h3>Pausen</h3>
+      <div id="zpPausen" class="zp-liste"></div>
+      <div class="modell-knoepfe"><button type="button" id="zpPauseNeu">＋ Pause</button></div>
+      <h3>Zeit-Ereignisse</h3>
+      <div id="zpEreignisse" class="zp-liste"></div>
+      <div class="modell-knoepfe">
+        <button type="button" id="zpNeu">＋ Ereignis</button>
+        <button type="button" id="zpGongs">＋ Gongs vor Beginn (7 / 5 / 2 min)</button>
+        <button type="button" id="zpPausenGongs">＋ Pausengongs (5 / 3 / 1 min vor Ende)</button>
+      </div>
+      <div class="form-knoepfe">
+        <span class="platz"></span>
+        <button value="abbrechen" formnovalidate>Abbrechen</button>
+        <button value="ok" class="primaer">Speichern</button>
       </div>
     </form>
   </dialog>

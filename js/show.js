@@ -3,6 +3,7 @@ import * as S from './skript.js';
 import { Tracker } from './tracker.js';
 import { api, toast, lokal } from './hilfen.js';
 import { audioKontext } from './erkennung.js';
+import { ZeitplanLauf } from './zeitplan.js';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -48,7 +49,9 @@ export class Laufzeit {
     this.layout();
 
     this.wachHalten();
+    this.zeit = new ZeitplanLauf(this);
     await this.wiederherstellen();
+    this.zeit.vergangeneErledigen(120000);   // Gongs, die vor dem Öffnen der App lagen, nicht nachholen
     if (this.app.startZeile != null) { this.abHier(this.app.startZeile); this.app.startZeile = null; }
     this.mikroStart();
     clearInterval(this.takt);
@@ -200,6 +203,7 @@ export class Laufzeit {
     try { z = await api.zustand(this.app.name); } catch { /* offline */ }
     if (!z?.zeit) { try { z = JSON.parse(lokal(`cue.zustand.${this.app.name}`) || 'null'); } catch { z = null; } }
     if (!z || !z.zeit || Date.now() - z.zeit > 12 * 3600 * 1000) return;
+    this.zeit.laden(z.zeitplan);
     if (!z.pos && !(z.erledigt || []).length) return;
     this.tracker.setzePosition(z.pos || 0);
     this.anzeigePos = this.goPos = this.tracker.pos;
@@ -216,6 +220,7 @@ export class Laufzeit {
     banner.hidden = false;
     $('#btnVonVorn').onclick = () => {
       this.erledigt.clear(); this.goZeit.clear(); this.ersteAnsage.clear(); this.stufen.clear(); this.laufend.clear();
+      this.zeit.zuruecksetzen();
       this.setzePosition(0, false);
       banner.hidden = true;
     };
@@ -224,7 +229,7 @@ export class Laufzeit {
 
   zustandSpeichern(sofort = false) {
     if (!this.app.name) return;
-    const z = { pos: this.tracker.pos, erledigt: [...this.erledigt], laufend: [...this.laufend], zeit: Date.now(), modus: this.modus };
+    const z = { pos: this.tracker.pos, erledigt: [...this.erledigt], laufend: [...this.laufend], zeitplan: this.zeit?.zustand(), zeit: Date.now(), modus: this.modus };
     lokal(`cue.zustand.${this.app.name}`, JSON.stringify(z));
     clearTimeout(this.zustandTimer);
     const senden = () => api.zustandSpeichern(this.app.name, z).catch(() => {});
@@ -326,7 +331,17 @@ export class Laufzeit {
     const gruppen = this.ix.gruppen;
     let ersteOffene = gruppen.findIndex((g) => !this.gruppeErledigt(g));
     if (ersteOffene < 0) ersteOffene = gruppen.length;
-    return gruppen.map((g, i) => this.stufe(g, i, ersteOffene));
+    const ergebnis = [];
+    gruppen.forEach((g, i) => {
+      let st = this.stufe(g, i, ersteOffene);
+      // Cue am selben Stichwort wie die vorige Gruppe: erst, wenn diese erledigt ist („danach“)
+      if (g.wartetAuf != null && st !== 'erledigt') {
+        const vorher = ergebnis[g.wartetAuf];
+        if (vorher !== 'erledigt') st = vorher === 'wartet' ? 'wartet' : 'folgt';
+      }
+      ergebnis.push(st);
+    });
+    return ergebnis;
   }
 
   stufe(g, i, ersteOffene) {
@@ -378,7 +393,7 @@ export class Laufzeit {
       });
       this.ton('go');
       this.blitz(g.cues[0].typ);
-      for (const c of g.cues) { if (c.istEnde) this.laufenBeenden(c.zuCue, 'endwort'); else this.laufenStarten(c); }
+      for (const c of g.cues) { if (c.istEnde) this.laufenBeenden(c.zuCue, 'endwort'); else this.laufenStarten(c); this.zeit?.cueAusgeloest(c.id); }
     }
     this.render();
   }
@@ -452,8 +467,9 @@ export class Laufzeit {
         geaendert = true;
       }
     }
+    if (this.zeit?.tick()) geaendert = true;
     if (geaendert) this.aktualisieren();
-    else if (this.laufend.size && Math.floor(jetzt / 1000) !== this.letzteSekunde) {
+    else if ((this.laufend.size || this.zeit?.aktiv()) && Math.floor(jetzt / 1000) !== this.letzteSekunde) {
       this.letzteSekunde = Math.floor(jetzt / 1000);
       this.renderCues();   // Uhren weiterzählen
     }
@@ -463,6 +479,7 @@ export class Laufzeit {
     for (const c of g.cues) {
       this.erledigt.add(c.id);
       if (c.istEnde) this.laufenBeenden(c.zuCue, via); else this.laufenStarten(c);
+      this.zeit?.cueAusgeloest(c.id);
     }
     this.erledigtStapel.push(g.cues.map((c) => c.id));
     this.probe.cues.push({ t: Date.now(), ids: g.cues.map((c) => c.id), stufe: 'erledigt', via });
@@ -475,6 +492,7 @@ export class Laufzeit {
     // zuerst abgelaufene Timer quittieren
     const erinnerung = [...this.laufend].filter(([, l]) => l.erinnert).sort((a, b) => a[1].erinnert - b[1].erinnert)[0];
     if (erinnerung) { this.laufenBeenden(erinnerung[0], 'timer-quittiert'); this.aktualisieren(); return; }
+    if (this.zeit?.quittieren()) { this.aktualisieren(); return; }   // Zeit-Ereignis im GO (Gong, Ansage …)
     const gruppen = this.ix.gruppen;
     const stufen = this.stufenBerechnen();
     let ziel = null, zielStufe = null;
@@ -561,16 +579,17 @@ export class Laufzeit {
     const rest = Math.max(0, g.idx - this.anzeigePos);
     const titel = {
       go: `GO ${label}`, bereit: `Bereit ${label}`, warnung: `Standby ${label}`,
-      standby: `Standby ${label}`, wartet: label,
+      standby: `Standby ${label}`, wartet: label, folgt: `Danach: ${label}`,
     }[s];
     const stufeText = {
       go: 'GO', bereit: 'BEREIT', warnung: 'STANDBY', standby: 'STANDBY · MANUELL – nach Go Leertaste', wartet: 'NÄCHSTER CUE',
+      folgt: 'DANACH – kommt nach dem vorigen Cue',
     }[s];
     const bez = g.cues.map((c) => c.bezeichnung).filter(Boolean).join(' · ');
     const notiz = g.cues.map((c) => c.notiz).filter(Boolean).join(' · ');
     const einsatz = g.manuell ? g.cues.map((c) => c.einsatz).filter(Boolean).join(' · ') : '';
     const dauer = g.cues.filter((c) => c.dauer?.art).map((c) => `${S.cueLabel(c)}: ${S.dauerBeschreibung(c, this.ix)}`).join(' · ');
-    const zeigeRest = !g.manuell && s !== 'go';
+    const zeigeRest = !g.manuell && s !== 'go' && s !== 'folgt';
     const breite = g.vorlauf ? Math.max(0, Math.min(100, (rest / g.vorlauf) * 100)) : 0;
     const cls = ['cue-karte', `typ-${c0.typ}`, s === 'standby' ? 'manuell-standby' : s, klein ? 'klein' : ''];
     const k = esc(gKey(g));
@@ -614,10 +633,15 @@ export class Laufzeit {
         <div class="bez">nach ${S.zeitText(c.dauer.sekunden)} – mit „Erledigt“ quittieren</div>
       </div>` : '';
     });
-    let html = erinnerungen.join('');
-    if (aktiv.length) html += aktiv.map(([g, s], i) => this.karte(g, s, i > 0 || erinnerungen.length > 0)).join('');
-    else if (naechsteWartend) html += this.karte(naechsteWartend[0], 'wartet', erinnerungen.length > 0);
-    else if (!erinnerungen.length) html += `<div class="ende">${gruppen.length ? 'Alle Cues erledigt.' : 'Keine Cues im Stück.'}</div>`;
+    let html = erinnerungen.join('') + (this.zeit?.kartenHtml() || '');
+    // Zeitleiste (Uhr, Beginn, Pause, nächstes Ereignis)
+    const zl = $('#zeitLeiste');
+    zl.hidden = !this.zeit?.aktiv();
+    if (!zl.hidden) zl.innerHTML = this.zeit.leisteHtml();
+    const davor = html.length > 0;
+    if (aktiv.length) html += aktiv.map(([g, s], i) => this.karte(g, s, i > 0 || davor)).join('');
+    else if (naechsteWartend) html += this.karte(naechsteWartend[0], 'wartet', davor);
+    else if (!davor) html += `<div class="ende">${gruppen.length ? 'Alle Cues erledigt.' : 'Keine Cues im Stück.'}</div>`;
     // Laufende Cues (Musik, Lichtstimmung, Timer)
     const laeuft = [...this.laufend].filter(([, l]) => !l.erinnert).map(([id, l]) => {
       const c = this.cueVon(id);
@@ -845,6 +869,14 @@ export class Laufzeit {
     $('#btnAbHier').addEventListener('click', () => { if (this.auswahlZeile != null) this.abHier(this.auswahlZeile); });
     $('#btnAbHierWeiter').addEventListener('click', () => { if (this.pausiert) this.pauseUmschalten(); });
     $('#btnCueEditFertig').addEventListener('click', () => this.cueBearbeiten(false));
+    // Zeitleiste: pointerdown statt click, weil die Leiste jede Sekunde neu gezeichnet wird
+    $('#zeitLeiste').addEventListener('pointerdown', (e) => {
+      const b = e.target.closest('[data-zeit]');
+      if (!b || !this.aktiv) return;
+      e.preventDefault();
+      this.zeit.aktion(b.dataset.zeit, b.dataset.arg);
+      this.aktualisieren();
+    });
     // Laufenden Cue antippen → beenden
     $('#cueHaupt').addEventListener('click', (e) => {
       const ka = e.target.closest('[data-ka]');
@@ -879,6 +911,7 @@ export class Laufzeit {
     $('#btnCuesZurueck').addEventListener('click', () => {
       if (!confirm('Alle Cues wieder als offen markieren?')) return;
       this.erledigt.clear(); this.goZeit.clear(); this.ersteAnsage.clear(); this.stufen.clear(); this.erledigtStapel = [];
+      this.zeit?.zuruecksetzen();
       this.zustandSpeichern();
       this.aktualisieren();
     });
