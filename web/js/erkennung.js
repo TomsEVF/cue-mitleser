@@ -56,6 +56,69 @@ export function skriptLaden(src) {
   }));
 }
 
+// ---------------------------------------------------------------- Mikrofon-Pegel / Verstärkung
+// Gilt pro Gerät (localStorage), weil es vom Mikrofon abhängt, nicht vom Stück.
+export const pegelEinst = {
+  get db() { return Math.max(0, Math.min(40, Number(lokal('cue.verstaerkung') || 0))); },
+  get auto() { return lokal('cue.verstaerkungAuto') === '1'; },
+  get rausch() { return lokal('cue.rauschunterdrueckung') !== '0'; },
+  get agc() { return lokal('cue.geraeteAgc') !== '0'; },
+};
+
+export function pegelSetzen({ db, auto, rausch, agc } = {}) {
+  if (db !== undefined) lokal('cue.verstaerkung', String(Math.round(db)));
+  if (auto !== undefined) lokal('cue.verstaerkungAuto', auto ? '1' : null);
+  if (rausch !== undefined) lokal('cue.rauschunterdrueckung', rausch ? null : '0');
+  if (agc !== undefined) lokal('cue.geraeteAgc', agc ? null : '0');
+  document.dispatchEvent(new CustomEvent('pegel-geaendert'));
+}
+
+// getUserMedia-Optionen inkl. Geräte-Rauschunterdrückung / -Pegelautomatik
+export function mikrofonOptionen(deviceId) {
+  return {
+    video: false,
+    audio: {
+      deviceId: deviceId ? { exact: deviceId } : undefined,
+      channelCount: 1, echoCancellation: false,
+      noiseSuppression: pegelEinst.rausch, autoGainControl: pegelEinst.agc,
+    },
+  };
+}
+
+// Verstärkt einen Audio-Block (fest in dB oder automatisch auf Sprechlautstärke) und begrenzt Spitzen.
+export class Verstaerker {
+  constructor() { this.autoFaktor = 4; this.huelle = 0; }
+
+  verarbeiten(d) {
+    let s = 0;
+    for (let i = 0; i < d.length; i += 2) s += d[i] * d[i];
+    const roh = Math.sqrt(s / (d.length / 2));
+    let faktor;
+    if (pegelEinst.auto) {
+      // Hüllkurve der lauten Stellen (Sprache), fällt langsam ab
+      this.huelle = Math.max(roh, this.huelle * 0.985);
+      const wunsch = Math.max(1, Math.min(100, 0.08 / Math.max(this.huelle, 0.0008)));
+      this.autoFaktor += (wunsch - this.autoFaktor) * (wunsch < this.autoFaktor ? 0.5 : 0.04);
+      faktor = this.autoFaktor;
+    } else {
+      faktor = 10 ** (pegelEinst.db / 20);
+    }
+    const daten = new Float32Array(d.length);
+    if (faktor === 1) daten.set(d);
+    else {
+      for (let i = 0; i < d.length; i++) {
+        const v = d[i] * faktor;
+        // weiche Begrenzung statt hartem Übersteuern
+        daten[i] = v > 0.8 ? 0.8 + 0.2 * Math.tanh((v - 0.8) / 0.2) : v < -0.8 ? -0.8 - 0.2 * Math.tanh((-v - 0.8) / 0.2) : v;
+      }
+    }
+    return { daten, roh, nach: Math.min(1, roh * faktor), faktor };
+  }
+}
+
+export const pegelAnzeige = (rms) => Math.min(1, rms * 4);   // RMS → 0..1 für Balken
+export const faktorText = (f) => `${20 * Math.log10(Math.max(1, f)) >= 0.5 ? '+' : ''}${Math.round(20 * Math.log10(Math.max(1, f)))} dB (×${f < 10 ? f.toFixed(1).replace('.', ',') : Math.round(f)})`;
+
 // ---------------------------------------------------------------- Sprachmodell (mit Offline-Cache)
 const MB = (b) => `${((b || 0) / 1048576).toFixed(1).replace('.', ',')} MB`;
 
@@ -252,14 +315,7 @@ class VoskMotor {
     this.stopp();
     const nr = (this.startNr = (this.startNr || 0) + 1);
     try {
-      const mikro = lokal('cue.mikro');
-      this.stream = await navigator.mediaDevices.getUserMedia({
-        video: false,
-        audio: {
-          deviceId: mikro ? { exact: mikro } : undefined,
-          channelCount: 1, echoCancellation: false, noiseSuppression: true, autoGainControl: true,
-        },
-      });
+      this.stream = await navigator.mediaDevices.getUserMedia(mikrofonOptionen(lokal('cue.mikro')));
       const spur = this.stream.getAudioTracks()[0];
       spur.onended = () => {
         if (nr !== this.startNr) return;
@@ -297,13 +353,12 @@ class VoskMotor {
       this.quelle = c.createMediaStreamSource(this.stream);
       this.knoten = c.createScriptProcessor(4096, 1, 1);
       this.letzterBlock = 0;
+      const verstaerker = new Verstaerker();
       this.knoten.onaudioprocess = (ev) => {
         this.letzterBlock = Date.now();
-        const d = ev.inputBuffer.getChannelData(0);
-        let s = 0;
-        for (let i = 0; i < d.length; i += 4) s += d[i] * d[i];
-        this.e.emit('level', { wert: Math.min(1, Math.sqrt(s / (d.length / 4)) * 4) });
-        try { rec.acceptWaveform(ev.inputBuffer); } catch (err) { console.error(err); }
+        const v = verstaerker.verarbeiten(ev.inputBuffer.getChannelData(0));
+        this.e.emit('level', { wert: pegelAnzeige(v.nach), roh: pegelAnzeige(v.roh), faktor: v.faktor });
+        try { rec.acceptWaveformFloat(v.daten, ev.inputBuffer.sampleRate); } catch (err) { console.error(err); }
       };
       this.quelle.connect(this.knoten);
       this.knoten.connect(c.destination);
@@ -448,11 +503,16 @@ class ServerMotor {
 
   senden(o) { if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(o)); }
   start(geraet, vokabular) {
-    this.gewuenscht = { type: 'start', geraet: lokal('cue.geraet') || geraet || null, vokabular };
+    this.gewuenscht = { type: 'start', geraet: lokal('cue.geraet') || geraet || null, vokabular, verstaerkung: pegelEinst.auto ? 'auto' : pegelEinst.db };
     this.verbinden();
     this.senden(this.gewuenscht);
   }
   stopp() { this.gewuenscht = null; this.senden({ type: 'stop' }); }
+  pegelGeaendert() {
+    const v = pegelEinst.auto ? 'auto' : pegelEinst.db;
+    if (this.gewuenscht) this.gewuenscht.verstaerkung = v;
+    this.senden({ type: 'verstaerkung', wert: v });
+  }
 }
 
 // ---------------------------------------------------------------- Verwaltung
@@ -470,6 +530,7 @@ export class Erkennung {
   emit(art, d) { (this.handler[art] || []).forEach((fn) => fn(d)); }
 
   init(serverDa) {
+    document.addEventListener('pegel-geaendert', () => this.motoren.server.pegelGeaendert());
     this.serverDa = serverDa;
     const gewaehlt = lokal('cue.motor');
     this.waehle(gewaehlt && this.motoren[gewaehlt] ? gewaehlt : serverDa ? 'server' : 'vosk');

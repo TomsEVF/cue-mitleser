@@ -253,6 +253,9 @@ class Erkennung:
         self.laeuft = False
         self.geraet = None
         self.fehler = ""
+        self.verstaerkung = 0          # dB oder "auto"
+        self._auto_faktor = 4.0
+        self._huelle = 0.0
 
     # -- Status
     def status(self) -> dict:
@@ -290,9 +293,29 @@ class Erkennung:
             except Exception:  # noqa: BLE001
                 self.clients.discard(ws)
 
+    # -- Verstärkung (wie im Browser: fest in dB oder automatisch auf Sprechlautstärke)
+    def verstaerkung_setzen(self, wert) -> None:
+        if wert == "auto":
+            self.verstaerkung = "auto"
+        else:
+            try:
+                self.verstaerkung = max(0.0, min(40.0, float(wert or 0)))
+            except (TypeError, ValueError):
+                self.verstaerkung = 0.0
+
+    def _faktor(self, roh: float) -> float:
+        if self.verstaerkung == "auto":
+            self._huelle = max(roh, self._huelle * 0.985)
+            wunsch = max(1.0, min(100.0, 0.08 / max(self._huelle, 0.0008)))
+            self._auto_faktor += (wunsch - self._auto_faktor) * (0.5 if wunsch < self._auto_faktor else 0.04)
+            return self._auto_faktor
+        return 10 ** (float(self.verstaerkung) / 20)
+
     # -- Start/Stopp
-    def start(self, geraet=None, vokabular: list[str] | None = None) -> None:
+    def start(self, geraet=None, vokabular: list[str] | None = None, verstaerkung=None) -> None:
         self.stopp()
+        if verstaerkung is not None:
+            self.verstaerkung_setzen(verstaerkung)
         st = self.status()
         if not st["asr"]:
             self.senden(st)
@@ -350,8 +373,13 @@ class Erkennung:
                         continue
                     samples = array("h", block)
                     if samples:
-                        rms = (sum(s * s for s in samples[::4]) / max(1, len(samples) // 4)) ** 0.5
-                        self.senden({"type": "level", "wert": min(1.0, rms / 8000)})
+                        rms = (sum(s * s for s in samples[::2]) / max(1, len(samples) // 2)) ** 0.5
+                        roh = rms / 32768
+                        faktor = self._faktor(roh)
+                        if faktor > 1.001:
+                            samples = array("h", (max(-32768, min(32767, int(x * faktor))) for x in samples))
+                            block = samples.tobytes()
+                        self.senden({"type": "level", "wert": min(1.0, roh * faktor * 4), "roh": min(1.0, roh * 4), "faktor": faktor})
                     if rec.AcceptWaveform(block):
                         res = json.loads(rec.Result())
                         text = res.get("text", "").strip()
@@ -409,9 +437,11 @@ async def websocket(req):
             if art == "start":
                 geraet = daten.get("geraet")
                 geraet = int(geraet) if geraet not in (None, "", "standard") else None
-                await asyncio.to_thread(ERKENNUNG.start, geraet, daten.get("vokabular"))
+                await asyncio.to_thread(ERKENNUNG.start, geraet, daten.get("vokabular"), daten.get("verstaerkung"))
             elif art == "stop":
                 await asyncio.to_thread(ERKENNUNG.stopp)
+            elif art == "verstaerkung":
+                ERKENNUNG.verstaerkung_setzen(daten.get("wert"))
             elif art == "status":
                 await ws.send_str(json.dumps(ERKENNUNG.status(), ensure_ascii=False))
     finally:

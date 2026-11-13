@@ -1,6 +1,7 @@
 // „Mikrofon & Erkennung testen“: prüft auf dem Gerät Schritt für Schritt, wo es hakt,
 // und erzeugt einen Bericht zum Kopieren.
-import { voskModellStarten, modellInfo, MODELL_URL } from './erkennung.js';
+import { voskModellStarten, modellInfo, MODELL_URL, Verstaerker, mikrofonOptionen, pegelEinst, pegelAnzeige, faktorText } from './erkennung.js';
+import { pegelReglerEinbauen } from './pegel-regler.js';
 import { lokal } from './hilfen.js';
 
 const $ = (s) => document.querySelector(s);
@@ -15,6 +16,7 @@ export class Diagnose {
     $('#diagStart').addEventListener('click', () => this.start());
     $('#diagKopieren').addEventListener('click', () => this.kopieren());
     $('#dlgDiagnose').addEventListener('close', () => this.ende());
+    this.regler = pegelReglerEinbauen($('#pegelDiagnose'), { hinweis: 'Nach dem Start sprechen und den Regler so einstellen, dass Sprache im grünen Bereich liegt.' });
   }
 
   oeffnen() {
@@ -22,7 +24,6 @@ export class Diagnose {
     $('#diagErkannt').textContent = '';
     $('#diagErgebnis').textContent = '';
     $('#diagErgebnis').className = 'diag-ergebnis';
-    $('#diagPegel').style.width = '0';
     $('#dlgDiagnose').showModal();
   }
 
@@ -105,7 +106,7 @@ export class Diagnose {
     // 1) Mikrofon
     this.log(null, 'Frage Mikrofon an …');
     try {
-      this.stream = await mitZeitlimit(navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: false, noiseSuppression: true, autoGainControl: true } }),
+      this.stream = await mitZeitlimit(navigator.mediaDevices.getUserMedia(mikrofonOptionen(lokal('cue.mikro'))),
         20000, 'Keine Antwort auf die Mikrofon-Anfrage');
     } catch (e) {
       this.log(false, `Mikrofon: ${e.name}: ${e.message}`);
@@ -118,6 +119,8 @@ export class Diagnose {
     let einst = {};
     try { einst = spur.getSettings(); } catch { /* egal */ }
     this.log(true, `Mikrofon: „${spur.label || '?'}“, Zustand ${spur.readyState}${spur.muted ? ', STUMM' : ''}, ${einst.sampleRate || '?'} Hz`);
+    this.log(null, `Geräte-Pegelanpassung: ${einst.autoGainControl ?? (pegelEinst.agc ? 'an' : 'aus')} · Rauschunterdrückung: ${einst.noiseSuppression ?? (pegelEinst.rausch ? 'an' : 'aus')}`);
+    this.log(null, `Verstärkung der App: ${pegelEinst.auto ? 'automatisch' : faktorText(10 ** (pegelEinst.db / 20))}`);
 
     // 2) Audio
     const AC = window.AudioContext || window.webkitAudioContext;
@@ -127,17 +130,18 @@ export class Diagnose {
     if (this.ctx.state !== 'running') this.log(null, 'Tipp: Einmal auf den Bildschirm tippen – manche iPads geben Audio erst danach frei.');
     this.quelle = this.ctx.createMediaStreamSource(this.stream);
     this.knoten = this.ctx.createScriptProcessor(4096, 1, 1);
-    let bloecke = 0, maxPegel = 0;
+    let bloecke = 0, maxPegel = 0, maxRoh = 0, faktorJetzt = 1;
+    const verstaerker = new Verstaerker();
     this.verarbeiten = null;
     this.knoten.onaudioprocess = (ev) => {
       bloecke++;
-      const d = ev.inputBuffer.getChannelData(0);
-      let s = 0;
-      for (let i = 0; i < d.length; i += 4) s += d[i] * d[i];
-      const pegel = Math.min(1, Math.sqrt(s / (d.length / 4)) * 4);
+      const v = verstaerker.verarbeiten(ev.inputBuffer.getChannelData(0));
+      const pegel = pegelAnzeige(v.nach), roh = pegelAnzeige(v.roh);
       maxPegel = Math.max(maxPegel, pegel);
-      $('#diagPegel').style.width = `${Math.round(Math.sqrt(pegel) * 100)}%`;
-      this.verarbeiten?.(ev.inputBuffer);
+      maxRoh = Math.max(maxRoh, roh);
+      faktorJetzt = v.faktor;
+      this.regler.pegel({ wert: pegel, roh, faktor: v.faktor });
+      this.verarbeiten?.(v.daten, ev.inputBuffer.sampleRate);
     };
     this.quelle.connect(this.knoten);
     this.knoten.connect(this.ctx.destination);
@@ -146,12 +150,16 @@ export class Diagnose {
     if (this.abbruch) return;
     const erwartet = Math.round(5 * this.ctx.sampleRate / 4096);
     this.log(bloecke > erwartet * 0.5, `Audio-Blöcke in 5 s: ${bloecke} (erwartet ≈ ${erwartet})`);
-    this.log(maxPegel > 0.02, `Lautester Pegel: ${Math.round(maxPegel * 100)} %`);
+    this.log(maxRoh > 0.02, `Lautester Pegel vom Mikrofon: ${Math.round(maxRoh * 100)} %`);
+    this.log(maxPegel >= 0.25, `Lautester Pegel nach Verstärkung (${faktorText(faktorJetzt)}): ${Math.round(maxPegel * 100)} %${maxPegel < 0.25 ? ' – ZU LEISE (Ziel: 30–80 %)' : ''}`);
+    // Empfehlung: Sprache soll bei ca. 50 % liegen
+    this.empfehlung = maxRoh > 0.002 && maxPegel < 0.25 ? Math.min(40, Math.ceil(20 * Math.log10(0.5 / maxRoh) / 2) * 2) : null;
+    if (this.empfehlung != null) this.log(null, `Empfehlung: Verstärkung ca. +${this.empfehlung} dB oder „Automatisch“`);
     if (!bloecke) {
       this.ergebnis(false, `Das Mikrofon ist an, aber es kommt kein Ton in der App an (Audio: ${this.ctx.state}). Bitte einmal auf den Bildschirm tippen und den Test wiederholen. Hilft das nicht: Bericht kopieren und schicken.`);
       return;
     }
-    if (maxPegel <= 0.02) {
+    if (maxRoh <= 0.005) {
       this.ergebnis(false, 'Es kommt nur Stille an. Ist ein anderes Mikrofon gewählt, das iPad stummgeschaltet oder nutzt eine andere App das Mikrofon?');
       return;
     }
@@ -179,7 +187,7 @@ export class Diagnose {
     let teil = 0;
     this.rec.on('partialresult', (m) => { const p = m.result?.partial; if (p) { teil++; $('#diagErkannt').textContent = `… ${p}`; } });
     this.rec.on('result', (m) => { const t = m.result?.text; if (t) { texte.push(t); $('#diagErkannt').textContent = `✓ ${texte.join(' / ')}`; } });
-    this.verarbeiten = (buf) => { try { this.rec.acceptWaveform(buf); } catch (e) { this.log(false, `acceptWaveform: ${e.message}`); this.verarbeiten = null; } };
+    this.verarbeiten = (daten, rate) => { try { this.rec.acceptWaveformFloat(daten, rate); } catch (e) { this.log(false, `acceptWaveform: ${e.message}`); this.verarbeiten = null; } };
     $('#diagErkannt').textContent = 'Erkennung läuft – bitte jetzt 12 Sekunden lang deutlich sprechen …';
     await warte(12000);
     this.verarbeiten = null;
@@ -187,9 +195,12 @@ export class Diagnose {
     await warte(1500);
     const woerter = texte.join(' ').split(/\s+/).filter(Boolean).length;
     this.log(woerter > 0 || teil > 0, `Vosk: ${teil} Zwischenergebnisse, ${woerter} erkannte Wörter: „${texte.join(' / ').slice(0, 200)}“`);
+    const leise = this.empfehlung != null;
     this.ergebnis(woerter > 0, woerter > 0
-      ? `Erkennung funktioniert (${woerter} Wörter erkannt). Wenn es in der Probe trotzdem hakt: Bericht kopieren und schicken.`
-      : 'Ton kommt an und das Sprachmodell läuft, aber es wurde nichts erkannt. Bitte näher ans iPad sprechen und wiederholen – oder Bericht kopieren und schicken.');
+      ? `Erkennung funktioniert (${woerter} Wörter erkannt).${leise ? ` Der Pegel ist aber knapp – Verstärkung auf ca. +${this.empfehlung} dB oder „Automatisch“ stellen.` : ''}`
+      : leise
+        ? `Zu leise für die Erkennung. Oben die Verstärkung auf ca. +${this.empfehlung} dB stellen (oder „Automatisch“ anhaken) und den Test wiederholen.`
+        : 'Ton kommt an und das Sprachmodell läuft, aber es wurde nichts erkannt. Bitte näher am Mikrofon sprechen und wiederholen – oder Bericht kopieren und schicken.');
   }
 
   async appleTest() {

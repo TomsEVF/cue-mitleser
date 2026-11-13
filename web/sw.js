@@ -2,11 +2,11 @@
 // App-Dateien (HTML/JS/CSS): zuerst aus dem Netz (immer aktuelle Version), offline aus dem Speicher.
 // Bibliotheken und Icons: aus dem Speicher (groß, ändern sich selten).
 // Das Sprachmodell verwaltet erkennung.js selbst (Cache „cue-sprachmodell-v1“).
-const VERSION = 'cue-app-v5';
+const VERSION = 'cue-app-v6';
 const DATEIEN = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'js/main.js', 'js/editor.js', 'js/show.js', 'js/skript.js', 'js/tracker.js', 'js/zahlen.js',
-  'js/hilfen.js', 'js/erkennung.js', 'js/datei-import.js', 'js/beispiel.js', 'js/diagnose.js',
+  'js/hilfen.js', 'js/erkennung.js', 'js/datei-import.js', 'js/beispiel.js', 'js/diagnose.js', 'js/pegel-regler.js',
   'vendor/vosk.js', 'vendor/pdf.min.js', 'vendor/pdf.worker.min.js', 'vendor/jszip.min.js',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
 ];

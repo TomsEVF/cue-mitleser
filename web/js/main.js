@@ -4,9 +4,11 @@ import { Editor } from './editor.js';
 import { Laufzeit } from './show.js';
 import { Erkennung, entsperren, MODELL_URL, modellInfo, modellHerunterladen, modellLoeschen, modellAusDatei, voskModellStarten } from './erkennung.js';
 
-export const APP_VERSION = '2026-11-12 b';
+export const APP_VERSION = '2026-11-13 a';
 import { dateiLesen } from './datei-import.js';
 import { Diagnose } from './diagnose.js';
+import { pegelReglerEinbauen } from './pegel-regler.js';
+import { pegelEinst, pegelSetzen } from './erkennung.js';
 import { modellAbsturzVermutet } from './erkennung.js';
 import { BEISPIEL } from './beispiel.js';
 import { api, toast, lokal, speicherStart, speicherModus, speicherDauerhaft, browserGeraete } from './hilfen.js';
@@ -27,6 +29,12 @@ class App {
     this.laufzeit = new Laufzeit(this);
     this.version = APP_VERSION;
     this.diagnose = new Diagnose(this);
+    // Verstärkungs-Regler mit Live-Pegel (Einstellungen + Probe-Spalte)
+    this.pegelRegler = [
+      pegelReglerEinbauen($('#pegelEinstellungen'), { hinweis: 'Live-Pegel erscheint, wenn Probe/Show läuft – oder im Mikrofon-Test.' }),
+      pegelReglerEinbauen($('#pegelProbe')),
+    ];
+    this.verbindung.on('level', (d) => this.pegelRegler.forEach((r) => r.pegel(d)));
     this.bindeKopf();
     this.bindeDialoge();
     this.verbindung.on('status', (s) => this.zeigeAsrStatus(s));
@@ -481,6 +489,8 @@ class App {
         server: 'Der Mac hört mit seinem Mikrofon mit (start.command). Dieses Gerät zeigt nur an.',
       }[m];
       $('#modellZeile').hidden = m !== 'vosk';
+      $('#pegelEinstellungen').hidden = m === 'apple';
+      $('#geraeteOptionen').hidden = m !== 'vosk';
       $('#einstVokabular').hidden = m === 'apple';
       const liste = m === 'server' ? await api.geraete() : m === 'vosk' ? await browserGeraete() : [];
       $('#einstGeraetFeld').hidden = m === 'apple';
@@ -491,6 +501,8 @@ class App {
     };
     motorSel.onchange = motorAnzeigen;
     $('#modellUrl').value = lokal('cue.modellUrl') || '';
+    $('#einstAgc').checked = pegelEinst.agc;
+    $('#einstRausch').checked = pegelEinst.rausch;
     $('#appVersion').textContent = `Version ${APP_VERSION}`;
     await motorAnzeigen();
     // Speicherort
@@ -508,7 +520,11 @@ class App {
         return;
       }
       if (dlg.returnValue !== 'ok') return;
+      const mikroVorher = `${lokal('cue.mikro')}|${pegelEinst.agc}|${pegelEinst.rausch}`;
       lokal(motorSel.value === 'server' ? 'cue.geraet' : 'cue.mikro', sel.value || null);
+      pegelSetzen({ agc: $('#einstAgc').checked, rausch: $('#einstRausch').checked });
+      // Mikrofon-Optionen geändert → laufendes Mikrofon neu öffnen
+      if (mikroVorher !== `${lokal('cue.mikro')}|${pegelEinst.agc}|${pegelEinst.rausch}` && this.laufzeit.aktiv) this.laufzeit.mikroStart();
       if (motorSel.value !== this.verbindung.motorId) this.verbindung.waehle(motorSel.value);
       const neu = { ...this.stueck.einstellungen };
       for (const k of Object.keys(S.STANDARD_EINSTELLUNGEN)) {
