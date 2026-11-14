@@ -113,6 +113,15 @@ die veröffentlichte App inklusive Modell nur in `gh-pages`.
   (nochmal ⏸ = Stelle entfernen). In Probe/Show zeigen die Blöcke echte Uhrzeiten und was erledigt ist (✓).
   Antippen eines Blocks im Bearbeiten-Modus öffnet den Zeitplan.
 
+### Synonyme (≈ Synonyme im Bearbeiten-Modus)
+
+Schauspieler sagen oft ein anderes Wort als im Textbuch. Für einen Bereich (von Zeile – bis Zeile) wird jedes Wort im
+Synonym-Wörterbuch nachgeschlagen (OpenThesaurus, offline mitgeliefert, ca. 560 KB, wird erst beim ersten Öffnen geladen).
+Die Vorschläge sind **nach Bedeutung gruppiert** („Zug“: Bahn/Eisenbahn · Luftzug/Durchzug · …); **＋** übernimmt eine Bedeutung,
+einzelne Wörter lassen sich an-/abwählen, eigene Wörter dazuschreiben. Nichts ist vorausgewählt – nur übernehmen, was wirklich gesagt wird.
+Übernommene Synonyme zählen beim Mitlesen wie das Textbuch-Wort; im Text sind solche Wörter grün gepunktet unterstrichen.
+Das Wörterbuch neu bauen: `python3 werkzeuge/synonyme-packen.py`.
+
 ### Text
 
 - **Pause** (P oder Knopf): Der Text lässt sich frei durchblättern. Eine Zeile antippen und dann **„▶ Ab hier starten“**. Alles davor gilt als erledigt, alles danach ist offen, und Musik, die über diese Stelle hinausläuft, steht in der „Läuft“-Leiste.

@@ -50,6 +50,7 @@
         <button id="btnImport">Skript importieren</button>
         <button id="btnZeileNeu">Zeile anfügen</button>
         <button id="btnZeitplan" title="Vorstellungsbeginn, Pausen, Gongs, Ansagen">⏱ Zeitplan</button>
+        <button id="btnSynonyme" title="Synonyme für Textbuch-Wörter suchen – zählen beim Mitlesen wie das Original">≈ Synonyme</button>
         <span class="trenner"></span>
         <button id="btnUndo" title="Rückgängig (⌘Z)">↶</button>
         <button id="btnRedo" title="Wiederholen (⇧⌘Z)">↷</button>
@@ -233,6 +234,35 @@
         <span class="platz"></span>
         <button value="abbrechen" formnovalidate>Abbrechen</button>
         <button value="ok" class="primaer">Speichern</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="dlgSynonyme">
+    <form method="dialog" class="dialog synonym-dialog">
+      <h2>≈ Synonyme</h2>
+      <p class="hinweis">Sagt jemand ein anderes Wort als im Textbuch („Bahn“ statt „Zug“), findet das Mitlesen trotzdem die Stelle,
+        wenn das Wort hier als Synonym übernommen ist. Der Bereich wird Wort für Wort im Synonym-Wörterbuch nachgeschlagen.
+        Die Vorschläge sind nach Bedeutung gruppiert: <b>＋</b> übernimmt eine ganze Bedeutung, ein Wort antippen schaltet es einzeln an/aus,
+        eigene Wörter kann man dazuschreiben. Weniger ist mehr – nur übernehmen, was wirklich gesagt wird.</p>
+      <div class="syn-bereich">
+        <label>Von <select id="synVon"></select></label>
+        <label>bis <select id="synBis"></select></label>
+        <button type="button" id="synSuchen" class="primaer">Synonyme suchen</button>
+      </div>
+      <div id="synStatus" class="hinweis"></div>
+      <div id="synAuswahl" class="modell-knoepfe" hidden>
+        <label class="schalter"><input type="checkbox" id="synNurMit" checked> nur Wörter mit Vorschlägen</label>
+        <button type="button" id="synAlleAus">Alle aus</button>
+        <button type="button" id="synUgsAus">Umgangssprache aus</button>
+      </div>
+      <div id="synListe" class="syn-liste"></div>
+      <button type="button" id="synMehr" hidden></button>
+      <div class="form-knoepfe">
+        <span class="hinweis">Wörterbuch: OpenThesaurus (LGPL)</span>
+        <span class="platz"></span>
+        <button value="abbrechen" formnovalidate>Abbrechen</button>
+        <button value="ok" class="primaer">Übernehmen</button>
       </div>
     </form>
   </dialog>

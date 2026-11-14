@@ -263,6 +263,7 @@ Diese Aufbereitung betrifft nur den Abgleich mit der Spracherkennung, der angeze
 | `cues[].gruppe` | Cues mit derselben Gruppen-ID kommen **gleichzeitig** (im Formular „Gleichzeitig mit“). Ohne Gruppe kommen Cues an derselben Stelle **nacheinander** |
 | `cues[].folge` | Reihenfolge nacheinander folgender Cues am selben Anker (Cue-Liste ↑/↓) |
 | `zeitplan` | `{ beginn: "19:30", pausen: [{id, name, dauer (min), startCue, zeile (Zeilen-ID, Stelle im Text, falls kein startCue)}], ereignisse: [{id, typ, nummer, bezeichnung, notiz, bezug: "beginn" \| "pstart:<pausenId>" \| "pende:<pausenId>", minuten (negativ = vorher), vorlauf (s)}] }` – Ereignisse nach der Uhr (Gongs, Pausen, Ansagen) |
+| `synonyme` | `{ "zug": ["bahn", "eisenbahn"], … }` – Schlüssel: gesprochenes Wort klein, ß→ss; Werte: Wörter, die beim Mitlesen ebenfalls als dieses Wort zählen |
 
 ---
 
