@@ -111,7 +111,9 @@ export class Laufzeit {
         }
       }
     }
-    for (const g of this.ix.gesprochen) { v.add(g.w); if (g.w.includes('ss')) v.add(g.w.replace(/ss/g, 'ß')); }
+    for (const g of this.ix.gesprochen) {
+      for (const w of [g.w, ...(g.syn || [])]) { v.add(w); if (w.includes('ss')) v.add(w.replace(/ss/g, 'ß')); }
+    }
     for (const f of String(this.e.fuellwoerter).split(/[,\s]+/)) if (f) v.add(f.toLowerCase());
     return [...v];
   }

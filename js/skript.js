@@ -455,7 +455,8 @@ export function tokenisieren(zeile) {
 
 // Baut aus dem Stück die Liste aller gesprochenen Wörter und löst Cues auf.
 export function indexBauen(stueck) {
-  const gesprochen = [];           // {w, z (Zeilenindex), wort (Tokenindex)}
+  const gesprochen = [];           // {w, z (Zeilenindex), wort (Tokenindex), syn (Synonyme oder undefined)}
+  const synonyme = stueck.synonyme || {};
   const zeilenIndex = new Map();   // zeilenId → Array-Index
   const zeilenBereich = [];        // pro Zeile {von, bis} in gesprochen (bis exklusiv)
   const tokensProZeile = [];
@@ -467,7 +468,7 @@ export function indexBauen(stueck) {
     const von = gesprochen.length;
     if (!z.gestrichen) {
       for (const tk of tokens) {
-        for (const w of tk.gesprochen) gesprochen.push({ w, z: zi, wort: tk.idx });
+        for (const w of tk.gesprochen) gesprochen.push({ w, z: zi, wort: tk.idx, syn: synonyme[w] });
       }
     }
     zeilenBereich.push({ von, bis: gesprochen.length });

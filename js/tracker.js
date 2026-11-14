@@ -61,10 +61,13 @@ export class Tracker {
 
   passt(w, i) {
     if (i < 0 || i >= this.g.length) return false;
-    const s = this.g[i].w;
+    const { w: s, syn } = this.g[i];
     // kurze Wörter müssen fast genau passen
     const schwelle = Math.min(w.length, s.length) <= 2 ? 100 : this.e.schwelle;
-    return aehnlichkeit(w, s) >= schwelle;
+    if (aehnlichkeit(w, s) >= schwelle) return true;
+    // Synonym aus dem Textbuch-Abgleich („bahn“ statt „zug“)
+    if (syn) for (const x of syn) if (aehnlichkeit(w, x) >= (Math.min(w.length, x.length) <= 3 ? 100 : this.e.schwelle)) return true;
+    return false;
   }
 
   // Verarbeitet erkannte Wörter (Rohtext von der Erkennung). Liefert ein Protokoll pro Wort.

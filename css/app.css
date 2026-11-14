@@ -477,3 +477,31 @@ dialog:has(.zeitplan-dialog) { max-width: 1000px; }
 .zb-e.typ-BT { --typfarbe: var(--BT); } .zb-e.typ-INFO { --typfarbe: var(--INFO); }
 #prompter .zp-block { font-size: 15px; cursor: default; }
 @media (max-width: 600px) { .zp-block .zb-e { grid-template-columns: 46px auto 1fr; } .zp-block .zb-wann { grid-column: 3; text-align: left; } }
+
+/* ---- Synonyme */
+.synonym-dialog { max-width: 980px; }
+dialog:has(.synonym-dialog) { max-width: 1000px; }
+.syn-bereich { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+.syn-bereich label { display: flex; gap: 6px; align-items: center; min-width: 0; }
+.syn-bereich select { max-width: min(380px, 70vw); }
+.syn-liste { display: flex; flex-direction: column; gap: 6px; max-height: 52vh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.syn-zeile { display: grid; grid-template-columns: 220px 1fr; gap: 10px; padding: 6px 8px; border: 1px solid var(--linie); border-radius: var(--radius); background: var(--bg); }
+.syn-wort b { font-size: 16px; }
+.syn-wort small { display: block; color: var(--text3); font-size: 12px; }
+.syn-zeile.hat { border-color: #3ecf6e66; }
+.syn-wort .syn-anz { color: #3ecf6e; margin-top: 4px; }
+.syn-wort .syn-anz button { padding: 0 8px; min-height: 24px; font-size: 12px; margin-left: 4px; }
+.syn-gruppen { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.syn-gruppe { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; padding-bottom: 4px; border-bottom: 1px solid #ffffff0d; width: 100%; }
+.syn-g { width: 32px; min-height: 30px; padding: 0; border-radius: 6px; font-weight: 700; }
+.syn-liste .syn-g.an { background: #2f7a4a; border-color: #3ecf6e; color: #fff; }
+.syn-liste .syn-g.teil { border-color: #3ecf6e; color: #3ecf6e; }
+.syn-eigen-titel { color: var(--text3); font-size: 12px; }
+.syn-chip { padding: 2px 9px; min-height: 30px; border-radius: 15px; font-size: 14px; color: var(--text2); background: transparent; border: 1px solid var(--linie); }
+.syn-chip.ugs { font-style: italic; }
+.syn-liste .syn-chip.an { background: #2f7a4a; border-color: #3ecf6e; color: #fff; }
+.syn-chip.eigen { border-style: dashed; }
+.syn-chip.mehr { color: var(--text3); }
+.syn-eigen { width: 9em; min-height: 30px; font-size: 14px; }
+.w.syn { text-decoration: underline dotted #3ecf6e99; text-underline-offset: 4px; }
+@media (max-width: 700px) { .syn-zeile { grid-template-columns: 1fr; } }

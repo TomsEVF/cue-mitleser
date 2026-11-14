@@ -83,6 +83,7 @@ export class Editor {
       if (z && !stich.has(`${z.z}|${z.wort}`)) stich.set(`${z.z}|${z.wort}`, c.typ);
     }
     const heat = this.auswertung?.heat;
+    const synonyme = this.st.synonyme && Object.keys(this.st.synonyme).length ? this.st.synonyme : null;
     // Zeilen, in denen ein Dauer-Cue läuft (Start bis Endwort)
     const bereich = new Map();
     for (const c of this.st.cues) {
@@ -109,7 +110,9 @@ export class Editor {
         if (stich.has(k) && !z.gestrichen) cls.push(`stich-${stich.get(k)}`);
         const h = heat?.get(`${z.id}|${tk.idx}`);
         if (h) cls.push(`heat${h}`);
-        html += marken(tk.idx) + `<span class="${cls.join(' ')}" data-z="${zi}" data-w="${tk.idx}">${esc(tk.text)}</span> `;
+        const syn = synonyme && tk.gesprochen.flatMap((w) => synonyme[w] || []);
+        if (syn?.length) cls.push('syn');
+        html += marken(tk.idx) + `<span class="${cls.join(' ')}" data-z="${zi}" data-w="${tk.idx}"${syn?.length ? ` title="${esc('≈ ' + syn.join(', '))}"` : ''}>${esc(tk.text)}</span> `;
       }
       // Cues hinter dem letzten Wort (z. B. nach Textänderung)
       for (const [k, cs] of amWort) {
